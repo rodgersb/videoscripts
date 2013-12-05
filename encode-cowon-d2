@@ -56,7 +56,7 @@ assert_have_program() {
 
 print_help() {
 cat <<EOF
-Usage: $PROGNAME [OPTION...] VIDEOFILES...
+Usage: $PROGNAME [OPTION...] VIDEO-FILES...
 Converts video files to Cowon D2-playable DivX AVI using MPlayer.
 
   -1      Single-pass encode only (two-pass encoding is default)

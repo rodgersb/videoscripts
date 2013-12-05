@@ -53,7 +53,7 @@ get_cropdetect_for_file() {
                                                 
 print_help() {
 cat <<EOF
-Usage: $PROGNAME [OPTION...] VIDEOFILES...
+Usage: $PROGNAME [OPTION...] VIDEO-FILES...
 Converts video files to DivX Home Theatre profile AVI.
 
   -1      Single-pass encode only (two-pass encoding is default)
