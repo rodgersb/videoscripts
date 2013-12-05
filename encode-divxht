@@ -1,0 +1,448 @@
+#!/bin/bash
+# encode-divxht: Encodes any video file into a format playable by
+#   a stand-alone DVD player that supports the DivX Home Theatre profile.
+# Copyright (C) 2012 Bryan Rodgers <rodgersb@it.net.au>
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or (at
+# your option) any later version.
+#
+# This program is distributed in the hope that it will be useful, but
+# WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+# General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program. If not, see <http://www.gnu.org/licenses/>.
+
+# Name of this script, used for displaying error messages.
+PROGNAME="${0##*/}"
+# Default frame rate to assume, if MPlayer cannot determine from source file
+DFL_FPS=25
+# The meta-data overhead in an .AVI file, as a percentage. Used for budgeting.
+BUDGET_META_OVERHEAD=0.05
+# If we have to re-encode audio, this is the budget estimated audio bitrate.
+BUDGET_DFL_ABITRATE=210
+# LAME encoding preset to use (medium, standard, extreme, insane)
+DFL_LAMEOPTS_PRESET=standard
+# Use this instance of MEncoder by default
+MENCODER=mencoder
+unset DELETE_INPUT_FILE PANSCAN MANUAL_VBITRATE BUDGET_FILESIZE \
+    OUTDIR SINGLE_PASS FORCED_ASPECT TURBO INTERLACED MANUAL_CROP AUTO_CROP \
+    START_TS ENCODE_DUR OUTPUT_FILENAME FFMPEG_DECODE REENCODE_AUDIO
+
+assert_have_program() {
+    for prog in $*; do
+        if ! which $prog >/dev/null 2>&1; then
+            echo "$PROGNAME: error: program \`$prog' is needed in the system path." >&2
+            exit 1
+        fi
+    done
+}
+
+# $1 = name of file to profile for crop region
+# Prints crop region to standard output in the form "w:h:x:y".
+# which can be re-used as arguments to "-vf crop".
+# May take several minutes for large files.
+# Won't print anything if error.
+get_cropdetect_for_file() {
+    mplayer -nosound -ac null -vo null -ao null -benchmark -vf cropdetect=36:4 -quiet "$1" 2>/dev/null \
+        | sed '/^\[CROP\]/!d; s/^.*-vf crop=\([-0-9:]\+\).*$/\1/;' | tail -n1
+}
+                                                
+print_help() {
+cat <<EOF
+Usage: $PROGNAME [OPTION...] VIDEOFILES...
+Converts video files to DivX Home Theatre profile AVI.
+
+  -1      Single-pass encode only (two-pass encoding is default)
+  -A      Force re-encoding of audio stream, even if it could be re-used as-is.
+  -a x    Override source material aspect ratio.
+          <x> must be in form \`w:h', \`w/h' or a decimal number.
+  -B n    Attempt to limit output file to <n> megabytes or less,
+          automatically selecting a video bitrate to meet this budget.
+          Maximum size is 2GB.
+  -b n    Output video bitrate in kbps, as a positive integer. Permitted
+          maximum is 4000. By default, the source video bitrate is used.
+  -C      Attempt to auto-detect black border crop region, and crop it.
+          Will take several minutes for large files.
+  -c w:h:x:y
+          Manually specify black border crop region. <w> is width, <h>
+          is height and <x>, <y> is the top-left corner (all in pixels)
+          of the region to be preserved. Corresponds to MPlayer "-vf crop".
+  -D      Delete input file after successful encode.
+  -d dir  Directory where output files are written (default: same as source)
+  -e dur  Stop encoding <dur> seconds after start of encoding. May be given as 
+          \`mm:ss', \`hh:mm:ss' or a whole number of seconds.
+  -F      Use FFmpeg to decode input files rather than MPlayer. Provides
+          a workaround for source files where MPlayer may decode incorrectly.
+  -f n    Assume this frame rate (Hz) if source frame rate is unavailable.
+          Default assumed frame rate is ${DFL_FPS}Hz. Must not exceed 30Hz.
+  -I      Assume source footage is interlaced. Cannot be auto-detected.
+          Progressive scan footage is assumed by default.
+  -M cmd  Name of MEncoder instance used for encoding (default=$MENCODER)
+  -o name Output file name; should only be used if one input file is given.
+  -p      Crop borders off 16:9 source material for 4:3 center extract.
+          Implicitly assumes source material aspect ratio is 16:9.
+  -s ts   Start encode at given timestamp in source material. Given as either
+          \`mm:ss', \`hh:mm:ss' or a whole number of seconds from the start.
+  -t      Use faster options for encode (trades off quality for more speed)
+  
+Without \`-o', output files will have the same name as the input files,
+with the extension \`.avi'. Should any source file already have extension 
+\`.avi', then the alternate extension \`.divxht.avi' will be used.
+
+EOF
+}
+
+print_try_help() {
+    echo "Try \`$PROGNAME -h' for more information." >&2
+}
+
+while getopts "1Aa:B:b:Cc:Dd:e:Ff:IM:o:ps:th" opt; do
+    case $opt in
+        '1') SINGLE_PASS=1;;
+        'A') REENCODE_AUDIO=1;;
+        'a')
+            if [ `expr match "$OPTARG" '[0-9]\+\.\?[0-9]*:[0-9]\+\.\?[0-9]*$'` -gt 0 ]; then
+                FORCED_ASPECT=`echo "scale=3; ${OPTARG%%:*} / ${OPTARG##*:}" | bc -q 2>/dev/null`
+            elif [ `expr match "$OPTARG" '[0-9]\+\.\?[0-9]*/[0-9]\+\.\?[0-9]*$'` -gt 0 ]; then
+                FORCED_ASPECT=`echo "scale=3; $OPTARG" | bc -q 2>/dev/null`
+            elif [ `expr match "$OPTARG" '[0-9]\+\.\?[0-9]$'` -gt 0 ]; then
+                FORCED_ASPECT=$OPTARG
+            else
+                echo "$PROGNAME: error: override aspect ratio must be in the form \`w:h', \`w/h' or a positive decimal number: $OPTARG" >&2
+                print_try_help
+                exit 1
+            fi
+            if [ -z "$FORCED_ASPECT" ] || [ $FORCED_ASPECT = 0 ]; then
+                echo "$PROGNAME: error: aspect ratio must be a positive decimal number: $OPTARG" >&2
+                print_try_help
+                exit 1
+            fi
+        ;;
+        'B')
+            if [ `expr match "$OPTARG" '[0-9]\+$'` -eq 0 ] || [ $OPTARG -eq 0 -o $OPTARG -gt 2047 ]; then
+                echo "$PROGNAME: error: file size budget must be a positive integer between 1 and 2047: $OPTARG" >&2
+                print_try_help
+                exit 1
+            fi
+            BUDGET_FILESIZE=$OPTARG
+        ;;
+        'b') 
+            if [ `expr match "$OPTARG" '[0-9]\+$'` -eq 0 ] || [ $OPTARG -eq 0 -o $OPTARG -gt 4000 ]; then
+                echo "$PROGNAME: error: target video bitrate must be a positive integer between 1 and 4000: $OPTARG" >&2
+                print_try_help
+                exit 1
+            fi
+            MANUAL_VBITRATE=$OPTARG
+        ;;
+        'C') AUTO_CROP=1;;
+        'c')
+            if [ `expr match "$OPTARG" '[0-9]\+:[0-9]\+:[0-9]\+:[0-9]\+$'` -eq 0 ]; then
+                echo "$PROGNAME: error: crop region must follow w:h:x:y integer format: $OPTARG" >&2
+                print_try_help
+                exit 1
+            fi
+            MANUAL_CROP=$OPTARG
+        ;;
+        'D') DELETE_INPUT_FILE=1;;
+        'd')
+            if [ -e "$OPTARG" ]; then
+                if [ -d "$OPTARG" ]; then
+                    OUTDIR="$OPTARG"
+                else
+                    echo "$PROGNAME: error: output directory \`$OPTARG' is not a directory" >&2
+                    print_try_help
+                    exit 1
+                fi
+            else
+                echo "$PROGNAME: error: output directory \`$OPTARG' does not exist" >&2
+                print_try_help
+                exit 1
+            fi
+        ;;
+        'e')
+            if [ `expr match "$OPTARG" '[0-9]\+:[0-9]\+:[0-9]\+\.\?[0-9]*$'` -eq 0 ] && \
+                    [ `expr match "$OPTARG" '[0-9]\+:[0-9]\+\.\?[0-9]*$'` -eq 0 ] && \
+                    [ `expr match "$OPTARG" '[0-9]\+\.\?[0-9]*'` -eq 0 ]; then
+                echo "$PROGNAME: error: encode duration length must be either in the format mm:ss, hh:mm:ss or a whole number of seconds: $OPTARG" >&2
+                print_try_help
+                exit 1
+            fi
+            ENCODE_DUR=$OPTARG
+        ;;
+        'F') FFMPEG_DECODE=1;;
+        'f')
+            if [ `expr match "$OPTARG" '[0-9]\+\.\?[0-9]*$'` -eq 0 ] \
+                || [ `echo "$OPTARG > 0 && $OPTARG <= 30" | bc -q` -eq 0 ]; then
+                echo "$PROGNAME: error: default frame rate must be a positive real number not exceeding 30: $OPTARG" >&2
+                print_try_help
+                exit 1
+            fi
+            DFL_FPS=$OPTARG
+        ;;
+        'I') INTERLACED=1;;
+        'M') MENCODER=$OPTARG;;
+        'o') OUTPUT_FILENAME=$OPTARG;;
+        'p') PANSCAN=1;;
+        's')
+            if [ `expr match "$OPTARG" '[0-9]\+:[0-9]\+:[0-9]\+\.\?[0-9]*$'` -eq 0 ] && \
+                    [ `expr match "$OPTARG" '[0-9]\+:[0-9]\+\.\?[0-9]*$'` -eq 0 ] && \
+                    [ `expr match "$OPTARG" '[0-9]\+\.\?[0-9]*'` -eq 0 ]; then
+                echo "$PROGNAME: error: encode start timestamp must be either in the format mm:ss, hh:mm:ss or a whole number of seconds: $OPTARG" >&2
+                print_try_help
+                exit 1
+            fi
+            START_TS=$OPTARG
+        ;;
+        't') TURBO=1;;
+        'h')
+            print_help
+            exit 0
+        ;;
+        '?')
+            print_try_help
+            exit 1
+        ;;
+    esac
+done
+shift $(($OPTIND-1))
+
+if [ $# -eq 0 ]; then
+    echo "$PROGNAME: error: No files specified to encode" >&2
+    print_try_help
+    exit 1
+fi
+
+if [ -n "$BUDGET_FILESIZE" -a -n "$MANUAL_VBITRATE" ]; then
+    echo "$PROGNAME: error: cannot use both -b (manual vbitrate) and -B (filesize budget) options together" >&2
+    print_try_help
+    exit 1
+fi
+
+if [ ${AUTO_CROP:-0} -eq 1 -a -n "$MANUAL_CROP" ] \
+    || [ ${AUTO_CROP:-0} -eq 1 -a ${PANSCAN:-0} -eq 1 ] \
+    || [ -n "$MANUAL_CROP" -a ${PANSCAN:-0} -eq 1 ]; then
+    echo "$PROGNAME: error: cannot use both -c (manual crop), -C (auto crop) and/or -p (pan & scan) options concurrently." >&2
+    print_try_help
+    exit 1
+fi
+
+renice 20 $$ >/dev/null
+
+LAMEOPTS="preset=$DFL_LAMEOPTS_PRESET"
+
+if [ ${TURBO:-0} -eq 1 ]; then
+    LAVCOPTS_BASE="turbo"
+else
+    LAVCOPTS_BASE="vhq:trell"
+fi
+if [ ${INTERLACED:-0} -eq 1 ]; then
+    LAVCOPTS_BASE="$LAVCOPTS_BASE:ildct:ilme"
+fi
+
+assert_have_program mplayer ${MENCODER%% *} bc
+
+# Given the amount of time involved per file, it's better to inform the user
+# up front if a file is non-existent or unreadable, rather than later on-demand.
+for file; do
+    if [ ! -e "$file" ]; then
+        echo "$PROGNAME: error: file not found: $file" >&2
+        exit 1
+    elif [ -d "$file" ]; then
+        echo "$PROGNAME: error: filename refers to a directory: $file" >&2
+        exit 1
+    elif [ ! -r "$file" ]; then
+        echo "$PROGNAME: error: file is not readable: $file" >&2
+        exit 1
+    fi
+done
+
+set -x 
+for file; do
+    eval `mplayer -vo null -ao null -really-quiet -identify "$file" -frames 0 2>/dev/null | sed '/^\w\+=/!d; s/\([^-[:alnum:]=_.]\)/\\\1/g'`
+
+    # Correct for dodgy source video FPS values
+    TARGET_VIDEO_FPS=$ID_VIDEO_FPS
+    if [ `echo "$ID_VIDEO_FPS == 0 || $ID_VIDEO_FPS >= 1000" | bc -q` -eq 1 ]; then
+        TARGET_VIDEO_FPS=$DFL_FPS
+    fi
+    #EXTRAOPTS="-ffourcc DX50 -ofps $TARGET_VIDEO_FPS -noskip -mc 0 -noodml"
+    EXTRAOPTS="-ffourcc DX50 -ofps $TARGET_VIDEO_FPS -noodml${START_TS:+ -ss $START_TS}${ENCODE_DUR:+ -endpos $ENCODE_DUR}"
+    EXTRAFFOPTS="${START_TS:+ -ss $START_TS}${ENCODE_DUR:+ -t $ENCODE_DUR}"
+
+    # Determine source video aspect
+    if [ -n "$FORCED_ASPECT" ]; then
+        TARGET_VIDEO_ASPECT=$FORCED_ASPECT
+    elif [ `echo "$ID_VIDEO_ASPECT == 0" | bc -q` -gt 0 ]; then
+        # If source aspect unavailable, assume square pixels.
+        TARGET_VIDEO_ASPECT=`echo "scale = 3; $ID_VIDEO_WIDTH / $ID_VIDEO_HEIGHT;" | bc -q`
+    else
+        TARGET_VIDEO_ASPECT=$ID_VIDEO_ASPECT
+    fi
+    
+    # Implement black border / pan & scan crop if requested
+    if [ ${AUTO_CROP:-0} -eq 1 ]; then
+        echo "$PROGNAME: notice: profiling \`$file' for optimal black border crop region. This may take several minutes." >&2
+        auto_crop_result=`get_cropdetect_for_file "$file"`
+        read w h x y < <(echo -e "${auto_crop_result//:/ }\n")
+        TARGET_VIDEO_ASPECT=`echo "scale = 3; $TARGET_VIDEO_ASPECT * ($w / $ID_VIDEO_WIDTH) / ($h / $ID_VIDEO_HEIGHT)" | bc -q`
+        TARGET_VIDEO_WIDTH=$w
+        TARGET_VIDEO_HEIGHT=$h
+        VFCROP="-vf crop=$auto_crop_result"
+    elif [ -n "$MANUAL_CROP" ]; then
+        VFCROP="-vf crop=$MANUAL_CROP"
+        read w h x y < <(echo -e "${MANUAL_CROP//:/ }\n")
+        TARGET_VIDEO_WIDTH=$w
+        TARGET_VIDEO_HEIGHT=$h
+        TARGET_VIDEO_ASPECT=`echo "scale = 3; $TARGET_VIDEO_ASPECT * ($w / $ID_VIDEO_WIDTH) / ($h / $ID_VIDEO_HEIGHT)" | bc -q`
+    elif [ ${PANSCAN:-0} -eq 1 ]; then
+        TARGET_VIDEO_WIDTH=$(($ID_VIDEO_WIDTH*3/4))
+        TARGET_VIDEO_HEIGHT=$ID_VIDEO_HEIGHT
+        VFCROP="-vf crop=$(($ID_VIDEO_WIDTH*3/4)):$ID_VIDEO_HEIGHT:$(($ID_VIDEO_WIDTH/8)):0"
+        TARGET_VIDEO_ASPECT=1.333
+    else
+        TARGET_VIDEO_WIDTH=$ID_VIDEO_WIDTH
+        TARGET_VIDEO_HEIGHT=$ID_VIDEO_HEIGHT
+        VFCROP=""
+    fi
+
+    # Rescale video (post-crop) to DivX HT constraints if needed
+    let rescale=0
+    if [ $TARGET_VIDEO_WIDTH -gt 720 ]; then
+        TARGET_VIDEO_WIDTH=720
+        let rescale=1
+    fi
+    # Note that the Panasonic NV-VP60 only ever duplicates frames
+    # (temporal upscaling), it never frame-drops (temporal downscaling).
+    # If the frame rate is less than or equal to 25Hz, then footage will
+    # be played back using PAL. If the frame rate is less than or equal
+    # to 30Hz, then footage will be played back using NTSC. Footage at
+    # higher than 30Hz framerates cannot be played.
+    if [ `echo "$TARGET_VIDEO_FPS <= 25" | bc -q` -eq 1 ]; then
+        if [ $TARGET_VIDEO_HEIGHT -gt 576 ]; then
+            TARGET_VIDEO_HEIGHT=576
+            let rescale=1
+        fi
+    elif [ `echo "$TARGET_VIDEO_FPS <= 30" | bc -q` -eq 1 ]; then
+        if [ $TARGET_VIDEO_HEIGHT -gt 480 ]; then
+            TARGET_VIDEO_HEIGHT=480
+            let rescale=1
+        fi
+    else
+        set +x
+        echo "$PROGNAME: error: Frame rate for file \`$file' exceeds 30Hz: $ID_VIDEO_FPS" >&2
+        exit 1
+    fi
+    if (( rescale )); then
+        VFSCALE="-vf scale=$TARGET_VIDEO_WIDTH:$TARGET_VIDEO_HEIGHT"
+    else
+        VFSCALE=""
+    fi
+
+    # Determine if audio track can be re-used or needs to be re-encoded
+    if [ ${FFMPEG_DECODE:-0} -eq 1 -o ${REENCODE_AUDIO:-0} -eq 1 ]; then
+        # If FFmpeg is decoding, incoming audio will always be
+        # uncompressed; this allows the user to work around streams
+        # that trigger bugs in MPlayer. We will need to re-encode the
+        # audio using default parameters.
+        AUDIOOPTS="-oac mp3lame -lameopts $LAMEOPTS"
+        ABITRATE=$BUDGET_DFL_ABITRATE
+    elif [ $ID_AUDIO_FORMAT = 85 -o $ID_AUDIO_FORMAT = 8192 ]; then
+        # MPEG-1 Layer III and Dolby AC-3 audio can be re-used verbatim.
+        AUDIOOPTS="-oac copy"
+        ABITRATE=$ID_AUDIO_BITRATE
+    elif [ $ID_AUDIO_FORMAT = 80 ]; then
+        # MPEG-1 Layer II audio can be re-used under certain conditions.
+        # Additional check - bitrate must not exceed 256kbps.
+        # Panasonic NV-VP60 refuses to play back higher bitrates - audio ends up muted.
+        if [ $ID_AUDIO_BITRATE -gt 256000 ]; then
+            AUDIOOPTS="-oac mp3lame -lameopts $LAMEOPTS"
+            ABITRATE=$BUDGET_DFL_ABITRATE
+        else
+            AUDIOOPTS="-oac copy"
+            ABITRATE=$ID_AUDIO_BITRATE
+        fi
+    else
+        AUDIOOPTS="-oac mp3lame -lameopts $LAMEOPTS"
+        ABITRATE=$ID_AUDIO_BITRATE
+    fi
+    
+    # Compute output video bitrate
+    if [ -n "$BUDGET_FILESIZE" ]; then
+        budget_vbitrate=`echo "($BUDGET_FILESIZE * (1 - $BUDGET_META_OVERHEAD) * 8192) / $ID_LENGTH - ($ABITRATE / 1000)" | bc -q`
+        if [ $budget_vbitrate -gt 4000 ]; then
+            budget_vbitrate=4000
+        elif [ $budget_vbitrate -lt 4 ]; then
+            budget_vbitrate=4
+            echo "$PROGNAME: warning: using minimum vbitrate of 4kbps for file \`$file'. Cannot guarantee file size budget will be met." >&2
+        fi
+        LAVCOPTS="$LAVCOPTS_BASE:vbitrate=$budget_vbitrate:aspect=$TARGET_VIDEO_ASPECT"
+    elif [ -n "$MANUAL_VBITRATE" ]; then
+        LAVCOPTS="$LAVCOPTS_BASE:vbitrate=$MANUAL_VBITRATE:aspect=$TARGET_VIDEO_ASPECT"
+    elif [ $ID_VIDEO_BITRATE -gt 4000000 ]; then
+        # Cap video bitrate at 4Mbps if source is greater
+        LAVCOPTS="$LAVCOPTS_BASE:vbitrate=4000:aspect=$TARGET_VIDEO_ASPECT"
+    elif [ $ID_VIDEO_BITRATE -eq 0 ]; then
+        # Source video bitrate is unavailable; make an estimate based from file size.
+        file_size_bytes=`wc -c "$file" | sed 's/ .*$//'`
+        vbitrate_est=`echo "((($file_size_bytes * 8) / $ID_LENGTH) - $ID_AUDIO_BITRATE) / 1000" | bc -q`
+        LAVCOPTS="$LAVCOPTS_BASE:vbitrate=$vbitrate_est:aspect=$TARGET_VIDEO_ASPECT"
+    else
+        LAVCOPTS="$LAVCOPTS_BASE:vbitrate=$((ID_VIDEO_BITRATE / 1000)):aspect=$TARGET_VIDEO_ASPECT"
+    fi
+    
+    if [ -n "$OUTPUT_FILENAME" ]; then
+        OUTFILE="$OUTPUT_FILENAME"
+    elif [ -z "$OUTDIR" -a "${file##*.}" = avi ]; then
+        OUTFILE="${OUTDIR:+$OUTDIR/}${file%.*}.divxht.avi"
+    else
+        OUTFILE="${OUTDIR:+$OUTDIR/}${file%.*}.avi"
+    fi
+    
+    if [ ${FFMPEG_DECODE:-0} -eq 1 ]; then
+        if [ ${SINGLE_PASS:-0} -eq 1 ]; then
+            # Single-pass encode, FFmpeg decodes
+            $MENCODER \
+                $EXTRAOPTS $VFCROP $VFSCALE $AUDIOOPTS \
+                -ovc lavc -lavcopts $LAVCOPTS \
+                -o "$OUTFILE" -demuxer avi \
+                <(ffmpeg -i "$file" -f avi -vcodec rawvideo -acodec pcm_s16le $EXTRAFFOPTS - </dev/null 2>/dev/null) && \
+            rm -f ${DELETE_INPUT_FILE:+"$file"} || exit 1
+        else
+            # Two-pass encode, FFmpeg decodes
+            LOGFILE="${OUTDIR:+$OUTDIR/}${file%.*}.log"
+            $MENCODER \
+                $EXTRAOPTS $VFCROP $VFSCALE $AUDIOOPTS \
+                -ovc lavc -lavcopts $LAVCOPTS:vpass=1:turbo \
+                -o /dev/null -passlogfile "$LOGFILE" -demuxer avi \
+                <(ffmpeg -i "$file" -f avi -vcodec rawvideo -acodec pcm_s16le $EXTRAFFOPTS - </dev/null 2>/dev/null) && \
+            $MENCODER \
+                $EXTRAOPTS $VFCROP $VFSCALE $AUDIOOPTS \
+                -ovc lavc -lavcopts $LAVCOPTS:vpass=2 \
+                -o "$OUTFILE" -passlogfile "$LOGFILE" -demuxer avi \
+                <(ffmpeg -i "$file" -f avi -vcodec rawvideo -acodec pcm_s16le $EXTRAFFOPTS - </dev/null 2>/dev/null) && \
+            rm -f "$LOGFILE" ${DELETE_INPUT_FILE:+"$file"} || exit 1
+        fi
+    elif [ ${SINGLE_PASS:-0} -eq 1 ]; then
+        # Single-pass encode with MEncoder
+        $MENCODER \
+            $EXTRAOPTS $VFCROP $VFSCALE $AUDIOOPTS \
+            -ovc lavc -lavcopts $LAVCOPTS \
+            -o "$OUTFILE" "$file" || exit 1
+    else
+        # Two-pass encode with MEncoder
+        LOGFILE="${OUTDIR:+$OUTDIR/}${file%.*}.log"
+        $MENCODER \
+            $EXTRAOPTS $VFCROP $VFSCALE $AUDIOOPTS \
+            -ovc lavc -lavcopts $LAVCOPTS:vpass=1:turbo \
+            -o /dev/null -passlogfile "$LOGFILE" "$file" && \
+        $MENCODER \
+            $EXTRAOPTS $VFCROP $VFSCALE $AUDIOOPTS \
+            -ovc lavc -lavcopts $LAVCOPTS:vpass=2 \
+            -o "$OUTFILE" -passlogfile "$LOGFILE" "$file" && \
+        rm -f "$LOGFILE" ${DELETE_INPUT_FILE:+"$file"} || exit 1
+    fi
+done

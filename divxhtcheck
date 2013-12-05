@@ -1,0 +1,238 @@
+#!/bin/bash
+# divxhtcheck: Runs a series of quality-assurance tests on a DivX AVI
+#   file to ensure that it complies with the DivX Home Theatre profile. 
+# Copyright (C) 2012 Bryan Rodgers <rodgersb@it.net.au>
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or (at
+# your option) any later version.
+#
+# This program is distributed in the hope that it will be useful, but
+# WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+# General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program. If not, see <http://www.gnu.org/licenses/>.
+
+# $1 = video file name
+# Returns zero exit status if success; non-zero if failure.
+# Returns video parameters stored in shell variables
+#   ID_VIDEO_ID: Video stream identifier number
+#   ID_AUDIO_ID: Audio stream identifier number
+#   ID_CLIP_INFO_N: Number of clip info entries; entries are indexed from zero to N-1.
+#   ID_CLIP_INFO_NAME<n>: Description of clip info field, loosely defined but human readable.
+#       (e.g. "Software" typically corresponds to encoding software used).
+#   ID_CLIP_INFO_VALUE<n>: Value of clip info field n.
+#   ID_FILENAME: File name of file being probed.
+#   ID_DEMUXER: Container format, should normally be "avi" for AVI files.
+#   ID_VIDEO_FORMAT: FourCC of video stream, e.g. "DX50".
+#   ID_VIDEO_BITRATE: Bitrate of video stream, in bits per second (integer).
+#   ID_VIDEO_WIDTH: Pixel width of video stream.
+#   ID_VIDEO_HEIGHT: Pixel height of video stream.
+#   ID_VIDEO_FPS: 
+#       Frame rate (frames per second) of video stream, in decimal. May
+#       be zero for certain container formats that have variable frame
+#       rates (frames are indexed by millisecond-resolution timestamps
+#       instead), such as WMV, ASF and MPEG-4.
+#   ID_VIDEO_ASPECT: Aspect ratio (width/height) expressed as decimal.
+#       In some cases this may be zero (if it's not recorded anywhere in the file).
+#   ID_VIDEO_CODEC: Codec MPlayer has selected to decode video stream 
+#       (should use "ffodivx" for DivX 5, "ffdivx" for DivX 3)
+#   ID_AUDIO_FORMAT: 
+#       An integer (internal to MPlayer) describing the audio stream format:
+#           80      MPEG-1 Layer II audio (aka "mp2")
+#           85      MPEG-1 Layer III audio (aka "mp3")
+#           8192    Dolby AC-3
+#   ID_AUDIO_BITRATE: Audio stream bitrate in bits per second (integer).
+#   ID_AUDIO_RATE: Sampling rate of audio stream (audio frames per second).
+#       May be zero if unavailable.
+#   ID_AUDIO_NCH: Number of channels in audio stream, may be zero if unavailable.
+#   ID_AUDIO_CODEC: Codec MPlayer has selected to decode audio stream
+#       "mp3" for MPEG-1 layer II/III audio
+#       "ffac3" for Dolby AC-3
+#   ID_LENGTH: Total playback duration of file, in seconds (decimal).
+#   ID_EXIT: Shows reason for MPlayer exiting
+#       "EOF": End of file (or requested playback range) reached
+#       "QUIT": User manually exited.
+#       "ERROR": Error occurred (e.g. format unrecognised)
+#       "NONE": Cause unknown.
+mplayer_identify() {
+    unset ID_EXIT
+    if ! [ -e "$1" ]; then
+        echo "error: cannot find file \`$1'" >&2
+        return 1
+    elif ! [ -f "$1" ]; then
+        echo "error: \`$1' is not a file" >&2
+        return 1
+    fi
+    eval `mplayer -identify -really-quiet -vo null -ao null -frames 0 "$1" 2>/dev/null \
+        | { while read line; do printf '%q\n' "$line"; done; }`
+    if [ "$ID_EXIT" != EOF ]; then
+        echo "error: unable to retrieve information for file \`$1'" >&2
+        return 1
+    fi
+}
+
+# Tests if a file is DivX Home Theatre compliant
+# $1 = file to test
+# Returns zero exit status if compliant; non-zero otherwise.
+# Messages will be printed to standard error explaining any failures.
+divxht_test() {
+    let failed=0
+    
+    # Confirm AVI file extension
+    if [ `expr match "$1" '.*\.[Aa][Vv][Ii]$'` -eq 0 ]; then
+        echo "failure: \`$1' does not have file extension \`.avi'" >&2
+        return 1
+    fi
+
+    if [ `expr match "${1##*/}" '.*\.[Aa][Vv][Ii]$'` -gt 60 ]; then
+        echo "failure: \`$1' file name is longer than 64 characters" >&2
+        return 1
+    fi
+
+    if ! mplayer_identify "$1"; then
+        return 1
+    fi
+
+    # Confirm AVI container
+    if [ "$ID_DEMUXER" != avi ]; then
+        echo "failure: \`$1' is not in avi container format: $ID_DEMUXER" >&2
+        let failed=1
+    fi
+    
+    # Confirm video FourCC is "DX50", "DIVX", "XVID" or "DIV3"
+    if [ "$ID_VIDEO_FORMAT" != DX50 \
+        -a "$ID_VIDEO_FORMAT" != DIVX \
+        -a "$ID_VIDEO_FORMAT" != XVID \
+        -a "$ID_VIDEO_FORMAT" != DIV3 ]; then
+        echo "failure: \`$1' video fourcc is not \`DX50', \`DIVX', \`XVID' or \`DIV3': $ID_VIDEO_FORMAT" >&2
+        let failed=1
+    fi
+    
+    # Confirm video stream is DivX 3/5
+    if [ "$ID_VIDEO_CODEC" != ffodivx -a "$ID_VIDEO_CODEC" != ffdivx ]; then
+        echo "failure: \`$1' video stream is not DivX format: $ID_VIDEO_CODEC" >&2
+        let failed=1
+    fi
+    
+    # Confirm video bitrate does not exceed 4Mbps
+    if [ $ID_VIDEO_BITRATE -gt 4000000 ]; then
+        echo "failure: \`$1' video bitrate exceeds 4Mbps: $ID_VIDEO_BITRATE" >&2
+        let failed=1
+    fi
+    
+    # Confirm video pixel width does not exceed 720
+    if [ $ID_VIDEO_WIDTH -gt 720 ]; then
+        echo "failure: \`$1' video pixel width exceeds 720: $ID_VIDEO_WIDTH" >&2
+        let failed=1
+    fi
+    
+    # Confirm frame rate does not exceed 30fps
+    if [ `expr $ID_VIDEO_FPS \<= 30` -ne 1 ]; then
+        echo "failure: \`$1' frame rate exceeds 30fps: $ID_VIDEO_FPS" >&2
+        let failed=1
+    fi
+    
+    # Video pixel height check
+    if [ `expr $ID_VIDEO_FPS \> 25.000` -eq 1 ]; then
+        # Must not exceed 480 if 25 < fps <= 30 (NTSC)
+        if [ $ID_VIDEO_HEIGHT -gt 480 ]; then
+            echo "failure: \`$1' video pixel height exceeds 480 for NTSC mode: $ID_VIDEO_HEIGHT" >&2
+            let failed=1
+        fi
+    else
+        # Must not exceed 576 if fps <= 25 (PAL)
+        if [ $ID_VIDEO_HEIGHT -gt 576 ]; then
+            echo "failure: \`$1' video pixel height exceeds 576 for PAL mode: $ID_VIDEO_HEIGHT" >&2
+            let failed=1
+        fi
+    fi
+    
+    # Check if audio stream format is recognised
+    if [ $ID_AUDIO_FORMAT -eq 80 ]; then
+        # MPEG-1 Layer II audio
+        # Additional check - bitrate must not exceed 256kbps 
+        # Panasonic NV-VP60 refuses to play back higher bitrates - audio ends up muted.
+        if [ $ID_AUDIO_BITRATE -gt 256000 ]; then
+            echo "failure: \`$1' audio is MPEG-1 Layer II and bitrate exceeds 256kbps: $ID_AUDIO_BITRATE" >&2
+            let failed=1
+        fi
+    elif [ $ID_AUDIO_FORMAT -eq 85 ]; then
+        # MPEG-1 Layer III audio
+        # No additional checks needed
+        true
+    elif [ $ID_AUDIO_FORMAT -eq 8192 ]; then
+        # Dolby AC-3 audio
+        # No additional checks needed
+        true
+    else
+        # Unrecognised audio format
+        echo "failure: \`$1' audio format is unrecognised: $ID_AUDIO_FORMAT ($ID_AUDIO_CODEC)" >&2
+        let failed=1
+    fi
+    
+    # Warn if aspect ratio is missing
+    if [ `expr "$ID_VIDEO_ASPECT" \= 0.0` -eq 1 ]; then
+        echo "warning: \`$1' does not have a video aspect ratio specified" >&2
+    fi
+
+    # Check if DivX MPEG-4 stream contains bidirectional predictive
+    # frames (B-frames); the Panasonic NV-VP60 will not decode these
+    # frames and will skip over them, causing jerky motion in playback. 
+    # 
+    # MPlayer produces a warning message when they are encountered, and
+    # claims that they are not part of the DivX specification. The only
+    # way we can detect these frames is to play back a brief portion of
+    # the movie and monitor MPlayer's diagnostic output.
+    #
+    # The search string may need to be updated if the message changes.
+    # The below message is current for MPlayer 1.0rc4.
+    if mplayer -vo null -ao null -frames 1 -benchmark -quiet "$1" 2>&1 \
+        | grep -q "Invalid and inefficient vfw-avi packed B frames detected"; then
+        echo "failure: \`$1' contains B-type frames and must be re-encoded" >&2
+        #echo "   (this will cause playback issues on the Panasonic NV-VP60)" >&2
+        let failed=1
+    fi
+
+    # Check if OpenDML index would cause problems
+    file_size=`wc -c "$1"| sed 's/^[[:blank:]]*\([0-9]\+\).*$/\1/'`
+    if [ `expr $file_size \>= 1073741824` -eq 1 ]; then
+        # If file is >= 1GB, it must not contain an OpenDML index,
+        # otherwise playback on the Panasonic NV-VP60 will experience
+        # major problems when the 1GB boundary is trangressed (A-V
+        # desync, loss of audio or premature end of playback).
+        #
+        # Scan first 8kB of AVI file for a "dmlh" chunk (OpenDML header)
+        if dd if="$1" bs=8192 count=1 2>/dev/null | strings -a -T binary | grep -q odmldmlh; then
+            echo "failure: \`$1' exceeds 1GB and contains an OpenDML index" >&2
+            #echo "  (this will cause playback issues on the Panasonic NV-VP60)" >&2
+            let failed=1
+        fi
+    fi
+    
+    return $failed
+}
+
+if [ $# -eq 0 ]; then
+    echo "Usage: $0 AVIFILE..."
+    echo "Checks a list of AVI files for DivX Home Theatre compliance"
+    echo "    (requires \`mplayer' program to be in system path)"
+    exit 1
+fi
+
+if ! which mplayer >/dev/null 2>&1; then
+    echo "error: This script requires the program \`mplayer' to be in the system path"
+    exit 1
+fi
+
+exit_status=0
+for file; do
+    if ! divxht_test "$file"; then
+        exit_status=1
+    fi
+done
+
+exit $exit_status

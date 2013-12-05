@@ -1,0 +1,84 @@
+MEncoder notes for converting videos into DivX for Panasonic NV-VP60
+====================================================================
+
+Note: I suspect the NV-VP60 looks likely it conforms to the DivX Home
+Theater profile.
+
+1. Must use AVI container format, with ".avi" extension.
+
+The resulting AVI file ideally should not exceed 2GB; this is a
+limitation of both the standard indexing structures and the ISO 9660
+file system.
+
+If the resulting AVI file exceeds 1GB, then OpenDML indexes must be
+disabled (MEncoder option -noodml), otherwise undesired behaviour may
+occur on NV-VP60 once playback crosses the 1GB mark (audio may desync,
+unable to jump, playback may prematurely end). 
+
+FFmpeg must be patched to prevent OpenDML headers on sub-2GB files,
+since it lacks an option to disable them, and includes them by default.
+
+2. Horizontal resolution must not exceed 720 pixels.
+
+3. Vertical resolution must not exceed 576 lines for PAL frame rate.
+Vertical resolution must not exceed 480 lines for NTSC frame rate.
+
+4. Must use "DX50" as FourCC code (-ffourcc DX50), implying DivX version
+5. The NV-VP60 will fail to play files with fourcc "XVID". The player
+will also support the earlier DivX version 3 (fourcc "DIV3").
+
+If you forget to specify this on the command line, you can fix it
+after the fact by hex-editing the resulting .avi file; the FourCC
+code is stored in two places at offsets <0x00000070> and <0x000000bc>
+in nearly all cases.
+
+5. Frame rate must either be 25fps (PAL) or 29.97/30fps (NTSC). 
+   
+If frame rate is 24fps, then the player will apply a 4% speedup in
+order to display the film using PAL mode. Half-speed rates are also
+supported (temporal frame doubling is used on playback).
+
+Interlaced scan modes are supported. Use the "ildct:ilme" options in
+-lavcopts for MEncoder. 
+
+Note that MEncoder has no way of auto-detecting if the source footage is
+interlaced; if interlaced source material is mistakenly encoded as
+progressive, the NV-VP60 will show shimmering artefacts on fast movement
+scenes.
+
+6. If the aspect ratio requires rectangular pixels, then the aspect   
+ratio must be specified in the MPEG-4 stream itself (-lavcopts   
+aspect=x/y), using -force-avi-aspect won't work (NV-VP60 does not   
+honour the "vprp" header). 
+   
+If no aspect ratio is given, then square pixels are assumed, which
+will typically result in slight pillarboxing on most 4:3 footage.
+
+The MP4Box utility can be used to correct the aspect ratio on existing
+encoded .avi files after the fact, however currently it only supports
+DivX version 5.
+
+7. Audio may either be MPEG-1 Layer II/III or MPEG-2 AAC (with either
+mono, stereo or 5.1 channels). If using MPEG-1 Layer II for audio, the
+bitrate must not exceed 256kbps. All bitrates for AAC and MPEG-1 Layer
+III seem to work fine, as well as variable bitrate for MPEG-1 Layer III.
+
+Multiple audio tracks may be used; use the "Audio" button on the NV-VP60
+remote to switch between them. Currently FFmpeg must be used to encode
+multi-audio .avi files since MEncoder does not support writing them.
+
+8. B-type frames (bidirectional predictive) should not be used. The
+NV-VP60 will simply refuse to display B-type frames, causing jerky
+motion. MEncoder will not include them by default. MPlayer will print a
+warning message if it detects the presence of them in an .avi file.
+
+9. Average video bitrate must not exceed 4Mbps. The peak video bitrate
+must not exceed 8Mbps for longer than one second. For most cases,
+1.5Mbps will provide near-DVD quality (roughly 6 hours of footage on a
+single-layer DVD).
+
+The maximum keyframe interval is 250 frames; MEncoder selects this by
+default.
+
+
+

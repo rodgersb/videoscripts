@@ -1,0 +1,384 @@
+#!/bin/bash
+# encode-cowon-d2: Encodes any video file into a format playable by
+#   the Cowon D2/D2+ portable digital media player.
+# Copyright (C) 2012 Bryan Rodgers <rodgersb@it.net.au>
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or (at
+# your option) any later version.
+#
+# This program is distributed in the hope that it will be useful, but
+# WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+# General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program. If not, see <http://www.gnu.org/licenses/>.
+
+# Name of this script, used for displaying error messages.
+PROGNAME="${0##*/}"
+# Default frame rate to assume, if MPlayer cannot determine from source file
+DFL_FPS=25
+# The meta-data overhead in an .AVI file, as a percentage. Used for budgeting.
+BUDGET_META_OVERHEAD=0.05
+# If we have to re-encode audio, this is the budget estimated audio bitrate.
+BUDGET_DFL_ABITRATE=210
+# LAME encoding preset to use (medium, standard, extreme, insane)
+DFL_LAMEOPTS_PRESET=medium
+# Default keyframe interval. Currently the D2 maximum limit is not known.
+KEYINT=250
+# Default one-pass video bitrate (kbps, still maintains respectable quality)
+DFL_1PASS_VBITRATE=384
+# Default two-pass video bitrate (kbps)
+DFL_2PASS_VBITRATE=256
+# Minimum video bitrate (kbps) that MEncoder allows (ridiculous but it works)
+MIN_VBITRATE=4
+# Maximum video bitrate (kbps)
+MAX_VBITRATE=768
+# A-V delay correction needed (seconds, used for MEncoder '-delay' option).
+ADELAY=-0.4
+# Use this instance of MEncoder by default
+MENCODER=mencoder
+
+unset DELETE_INPUT_FILE PANSCAN SINGLE_PASS TURBO FORCED_ASPECT \
+    MANUAL_VBITRATE BUDGET_FILESIZE OUTDIR ROTATE90 FFMPEG_DECODE \
+    START_TS ENCODE_DUR NUM_FRAMES GAMMA_ADJUST
+
+assert_have_program() {
+    for prog in $*; do
+        if ! which $prog >/dev/null 2>&1; then
+            echo "error: program \`$prog' is needed in the system path to run this script." >&2
+            exit 1
+        fi
+    done
+}
+
+print_help() {
+cat <<EOF
+Usage: $PROGNAME [OPTION...] VIDEOFILES...
+Converts video files to Cowon D2-playable DivX AVI using MPlayer.
+
+  -1      Single-pass encode only (two-pass encoding is default)
+  -a x    Override source material aspect ratio.
+          <x> must be in form \`w:h', \`w/h' or a decimal number.
+  -B n    Attempt to limit output file to <n> megabytes or less, automatically 
+          selecting a video bitrate to meet this budget. Maximum size is 2GB.
+  -b n    Video bitrate in kbps. Default for 1-pass encode is ${DFL_1PASS_VBITRATE}kbps, 
+          2-pass encode is ${DFL_2PASS_VBITRATE}kbps. Maximum is ${MAX_VBITRATE}kbps.
+  -D      Delete input file after successful encode.
+  -d dir  Directory to place output files in.
+  -e dur  Stop encoding <dur> seconds after start of encoding. May be given as
+          \`mm:ss', \`hh:mm:ss' or a whole number of seconds.
+  -F      Use FFmpeg to decode input files rather than MPlayer. Provides
+          a workaround for source files where MPlayer may decode incorrectly.
+  -f n    Assume this frame rate (Hz) if source frame rate is unavailable.
+          Default assumed frame rate is ${DFL_FPS}Hz. Must not exceed 30Hz.
+  -g n    Adjust gamma levels by factor of n (default 1.0, meaning leave as-is).
+  -k      Keyframe interval (experimental, default=$KEYINT)
+  -M cmd  Program name of MEncoder instance to use for encoding (default=$MENCODER)
+  -p      Crop side borders off widescreen material, giving 4:3 centre extract.
+  -r      Rotate video 90 degrees clockwise.
+  -s ts   Start encode at given timestamp in source material. Given as either
+          \`mm:ss', \`hh:mm:ss' or a whole number of seconds from the start.
+  -t      Use faster options for encode (trades off quality for more speed)
+
+All output files will take on the extension \`.d2.avi'.
+
+Note that output file A-V sync will be offset by -400ms; this is to
+compensate for a bug in Cowon D2 video player firmware where A-V sync
+irrepairbly drifts +400ms after the first seek operation is performed. 
+
+To play a file encoded by this script properly on the Cowon D2, start the
+video playing, then immediately perform at least one seek operation that
+lands anywhere but the start of the file (timecode 0:00:00). After this
+point, correct A-V sync is maintained despite further seeks and resumes.
+EOF
+}
+
+print_try_help() {
+    echo "Try \`$PROGNAME -h' for more information." >&2
+}
+
+while getopts "1aB::b:Dd:e:Ff:g:k:prs:th" opt; do
+    case $opt in
+        '1') SINGLE_PASS=1;;
+        'a')
+            if [ `expr match "$OPTARG" '[0-9]\+\.\?[0-9]*:[0-9]\+\.\?[0-9]*$'` -gt 0 ]; then
+                FORCED_ASPECT=`echo "scale=3; ${OPTARG%%:*} / ${OPTARG##*:}" | bc -q 2>/dev/null`
+            elif [ `expr match "$OPTARG" '[0-9]\+\.\?[0-9]*/[0-9]\+\.\?[0-9]*$'` -gt 0 ]; then
+                FORCED_ASPECT=`echo "scale=3; $OPTARG" | bc -q 2>/dev/null`
+            elif [ `expr match "$OPTARG" '[0-9]\+\.\?[0-9]$'` -gt 0 ]; then
+                FORCED_ASPECT=$OPTARG
+            else
+                echo "$PROGNAME: error: override aspect ratio must be in the form \`w:h', \`w/h' or a positive decimal number: $OPTARG" >&2
+                print_try_help
+                exit 1
+            fi
+            if [ -z "$FORCED_ASPECT" ] || [ $FORCED_ASPECT = 0 ]; then
+                echo "$PROGNAME: error: aspect ratio must be a positive decimal number: $OPTARG" >&2
+                print_try_help
+                exit 1
+            fi
+        ;;
+        'B')
+            if [ `expr match "$OPTARG" '[0-9]\+$'` -eq 0 ] || [ $OPTARG -eq 0 -o $OPTARG -gt 2047 ]; then
+                echo "$PROGNAME: error: file size budget must be a positive integer between 1 and 2047: $OPTARG" >&2
+                print_try_help
+                exit 1
+            fi
+            BUDGET_FILESIZE=$OPTARG
+        ;;
+        'b') 
+            if [ `expr match "$OPTARG" '[0-9]\+$'` -eq 0 ] || [ $OPTARG -eq 0 -o $OPTARG -gt $MAX_VBITRATE ]; then
+                echo "$PROGNAME: error: target video bitrate must be a positive integer between 1 and $MAX_VBITRATE: $OPTARG" >&2
+                print_try_help
+                exit 1
+            fi
+            MANUAL_VBITRATE=$OPTARG
+        ;;
+        'D') DELETE_INPUT_FILE=1;;
+        'd')
+            if [ -e "$OPTARG" ]; then
+                if [ -d "$OPTARG" ]; then
+                    OUTDIR="$OPTARG"
+                else
+                    echo "$PROGNAME: error: output directory \`$OPTARG' is not a directory" >&2
+                    print_try_help
+                    exit 1
+                fi
+            else
+                echo "$PROGNAME: error: output directory \`$OPTARG' does not exist" >&2
+                print_try_help
+                exit 1
+            fi
+        ;;
+        'e')
+            if [ `expr match "$OPTARG" '[0-9]\+:[0-9]\+:[0-9]\+\.\?[0-9]*$'` -eq 0 ] && \
+                    [ `expr match "$OPTARG" '[0-9]\+:[0-9]\+\.\?[0-9]*$'` -eq 0 ] && \
+                    [ `expr match "$OPTARG" '[0-9]\+\.\?[0-9]*'` -eq 0 ]; then
+                echo "$PROGNAME: error: encode duration length must be either in the format mm:ss, hh:mm:ss or a whole number of seconds: $OPTARG" >&2
+                print_try_help
+                exit 1
+            fi
+            ENCODE_DUR=$OPTARG
+        ;;
+        'F') FFMPEG_DECODE=1;;
+        'f')
+            if [ `expr match "$OPTARG" '[0-9]\+\.\?[0-9]*$'` -eq 0 ] \
+                || [ `echo "$OPTARG > 0 && $OPTARG <= 30" | bc -q` -eq 0 ]; then
+                echo "$PROGNAME: error: default frame rate must be a positive real number not exceeding 30: $OPTARG" >&2
+                print_try_help
+                exit 1
+            fi
+            DFL_FPS=$OPTARG
+        ;;
+        'g')
+            if [ `expr match "$OPTARG" '[0-9]\+\.\?[0-9]*'` -eq 0 ]; then
+                echo "$PROGNAME: error: gamma correction level must be a non-negative real number: $OPTARG" >&2
+            fi
+            GAMMA_ADJUST=$OPTARG
+        ;;
+        'k')
+            if [ `expr match "$OPTARG" '[0-9]\+$'` -eq 0 ] || [ $OPTARG -eq 0 ]; then
+                echo "$PROGNAME: error: keyframe interval must be a positive integer: $OPTARG" >&2
+                print_try_help
+                exit 1
+            fi
+            KEYINT=$OPTARG
+        ;;
+        'M') MENCODER=$OPTARG;;
+        'p') PANSCAN=1;;
+        'r') ROTATE90=1;;
+        's')
+            if [ `expr match "$OPTARG" '[0-9]\+:[0-9]\+:[0-9]\+\.\?[0-9]*$'` -eq 0 ] && \
+                    [ `expr match "$OPTARG" '[0-9]\+:[0-9]\+\.\?[0-9]*$'` -eq 0 ] && \
+                    [ `expr match "$OPTARG" '[0-9]\+\.\?[0-9]*'` -eq 0 ]; then
+                echo "$PROGNAME: error: encode start timestamp must be either in the format mm:ss, hh:mm:ss or a whole number of seconds: $OPTARG" >&2
+                print_try_help
+                exit 1
+            fi
+            START_TS=$OPTARG
+        ;;
+        'h') print_help; exit 0;;
+        '?') print_try_help; exit 1;;
+    esac
+done
+shift $(($OPTIND-1))
+
+assert_have_program mplayer $MENCODER bc
+[ ${FFMPEG_DECODE:-0} -eq 1 ] && assert_have_program ffmpeg
+
+if [ $# -eq 0 ]; then
+    echo "$PROGNAME: error: No files specified to encode" >&2
+    print_try_help
+    exit 1
+fi
+
+if [ -n "$BUDGET_FILESIZE" -a -n "$MANUAL_VBITRATE" ]; then
+    echo "$PROGNAME: error: cannot use both -b (manual vbitrate) and -B (filesize budget) options together" >&2
+    print_try_help
+    exit 1
+fi
+
+renice 20 $$ >/dev/null
+
+LAVCOPTS_BASE="keyint=$KEYINT"
+if [ ${TURBO:-0} -eq 1 ]; then
+    LAVCOPTS_BASE="$LAVCOPTS_BASE:turbo"
+else
+    LAVCOPTS_BASE="$LAVCOPTS_BASE:vhq:trell"
+fi
+LAMEOPTS="preset=$DFL_LAMEOPTS_PRESET"
+
+if [ ${ROTATE90:-0} -eq 1 ]; then
+    VFROTATE="-vf rotate=1"
+else
+    VFROTATE=""
+fi
+
+if [ -n "${GAMMA_ADJUST}" ]; then
+    VFGAMMA="-vf eq2=$GAMMA_ADJUST"
+else
+    VFGAMMA=""
+fi
+
+# Given the amount of time involved per file, it's better to inform the user
+# up front if a file is non-existent or unreadable, rather than later on-demand.
+for file; do
+    if [ ! -e "$file" ]; then
+        echo "$PROGNAME: error: file not found: $file" >&2
+        exit 1
+    elif [ -d "$file" ]; then
+        echo "$PROGNAME: error: filename refers to a directory: $file" >&2
+        exit 1
+    elif [ ! -r "$file" ]; then
+        echo "$PROGNAME: error: file is not readable: $file" >&2
+        exit 1
+    fi
+done
+
+set -x -e
+for file; do
+    eval `mplayer -vo null -ao null -really-quiet -identify "$file" -frames 0 2>/dev/null | sed '/^\w\+=/!d; s/\([^[:alnum:]=_.]\)/\\\1/g'`
+
+    # Correct for dodgy source video FPS values
+    if [ `echo "$ID_VIDEO_FPS == 0 || $ID_VIDEO_FPS >= 1000" | bc -q` -eq 1 ]; then
+        TARGET_VIDEO_FPS=$DFL_FPS
+    elif [ `echo "$ID_VIDEO_FPS > 30" | bc -q` -eq 1 ]; then
+        set +x
+        echo "$PROGNAME: error: frame rate for \`$file' exceeds 30Hz: $ID_VIDEO_FPS" >&2
+        exit 1
+    else
+        TARGET_VIDEO_FPS=$ID_VIDEO_FPS
+    fi
+
+#   EXTRAOPTS="-ffourcc DX50 -ofps $TARGET_VIDEO_FPS -noodml"
+    EXTRAOPTS="-ffourcc DX50 -ofps $TARGET_VIDEO_FPS -noskip -mc 0 -noodml${START_TS:+ -ss $START_TS}${ENCODE_DUR:+ -endpos $ENCODE_DUR}"
+    EXTRAFFOPTS="${START_TS:+ -ss $START_TS}${ENCODE_DUR:+ -t $ENCODE_DUR}"
+
+    # Determine source video aspect
+    if [ -n "$FORCED_ASPECT" ]; then
+        TARGET_VIDEO_ASPECT=$FORCED_ASPECT
+    elif [ `echo "$ID_VIDEO_ASPECT == 0" | bc -q` -gt 0 ]; then
+        # If source aspect unavailable, assume square pixels.
+        TARGET_VIDEO_ASPECT=`echo "scale = 3; $ID_VIDEO_WIDTH / $ID_VIDEO_HEIGHT;" | bc -q`
+    else
+        TARGET_VIDEO_ASPECT=$ID_VIDEO_ASPECT
+    fi
+
+    # Determine if audio track can be re-used or needs to be re-encoded
+    if [ ${FFMPEG_DECODE:-0} -eq 0 ] && [ $ID_AUDIO_FORMAT = 85 -o $ID_AUDIO_FORMAT = 80 ]; then
+        # MPEG-1 Layer II/III can be re-used verbatim.
+        AUDIOOPTS="-oac copy -delay $ADELAY"
+        ABITRATE=$((ID_AUDIO_BITRATE / 1000))
+    else
+        AUDIOOPTS="-oac mp3lame -lameopts $LAMEOPTS -delay $ADELAY"
+        ABITRATE=$BUDGET_DFL_ABITRATE
+    fi
+
+    # Compute output video bitrate if file size budget given
+    if [ -n "$BUDGET_FILESIZE" ]; then
+        budget_vbitrate=`echo "scale = 0; ($BUDGET_FILESIZE * (1 - $BUDGET_META_OVERHEAD) * 8192) / $ID_LENGTH - $ABITRATE" | bc -q`
+        if [ $budget_vbitrate -gt $MAX_VBITRATE ]; then
+            budget_vbitrate=$MAX_VBITRATE
+        elif [ $budget_vbitrate -lt $MIN_VBITRATE ]; then
+            budget_vbitrate=$MIN_VBITRATE
+            echo "$PROGNAME: warning: using minimum vbitrate of ${MIN_VBITRATE}kbps for file \`$file'. Cannot guarantee file size budget will be met." >&2
+        fi
+        VBITRATE=$budget_vbitrate
+    elif [ -n "${MANUAL_VBITRATE}" ]; then
+        VBITRATE=$MANUAL_VBITRATE
+    elif [ ${SINGLE_PASS:-0} -eq 1 ]; then
+        VBITRATE=$DFL_1PASS_VBITRATE
+    else
+        VBITRATE=$DFL_2PASS_VBITRATE
+    fi
+    
+    if [ ${PANSCAN:-0} -eq 1 ]; then
+        scale_width=`echo "scale = 0; 240 * $TARGET_VIDEO_ASPECT / 1" | bc -q`
+        crop_margin=$((scale_width / 8))
+        VFSCALE="-vf scale=$scale_width:240,crop=320:240:$crop_margin:0"
+        TARGET_VIDEO_ASPECT=1.333
+    elif [ $ID_VIDEO_WIDTH -ne 320 -o $ID_VIDEO_HEIGHT -gt 240 ]; then
+        target_video_height=`echo "scale = 0; 320 / $TARGET_VIDEO_ASPECT / 1" | bc`
+        # bc does not have a rounding function. 320 / 1.7778 = 179, should be 180.
+        if [ $target_video_height -eq 179 ]; then
+            target_video_height=180
+        elif [ $target_video_height -eq 239 ]; then
+            target_video_height=240
+        fi
+        VFSCALE="-vf scale=320:$target_video_height"
+    else
+        VFSCALE=""
+    fi
+    LAVCOPTS="$LAVCOPTS_BASE:vbitrate=$VBITRATE:aspect=$TARGET_VIDEO_ASPECT"
+
+    basename="$(basename "$file")"
+    OUTFILE="${OUTDIR:+$OUTDIR/}${basename%.*}.d2.avi"
+
+    if [ ${FFMPEG_DECODE:-0} -eq 1 ]; then
+        if [ ${SINGLE_PASS:-0} -eq 1 ]; then
+            # Single pass encode, FFmpeg decodes
+            $MENCODER \
+                $EXTRAOPTS $VFROTATE $VFGAMMA $VFSCALE $AUDIOOPTS \
+                -ovc lavc -lavcopts $LAVCOPTS \
+                -o "$OUTFILE" -demuxer avi \
+                <(ffmpeg -i "$file" -f avi -vcodec rawvideo -acodec pcm_s16le $EXTRAFFOPTS - </dev/null 2>/dev/null) && \
+            rm -f ${DELETE_INPUT_FILE:+"$file"} || exit 1
+        else
+            # Two-pass encode, FFmpeg decodes
+            LOGFILE="${OUTFILE%.*}.log"
+            $MENCODER \
+                $EXTRAOPTS $VFROTATE $VFGAMMA $VFSCALE $AUDIOOPTS \
+                -ovc lavc -lavcopts $LAVCOPTS:vpass=1:turbo \
+                -o /dev/null -passlogfile "$LOGFILE" -demuxer avi \
+                <(ffmpeg -i "$file" -f avi -vcodec rawvideo -acodec pcm_s16le $EXTRAFFOPTS - </dev/null 2>/dev/null) && \
+            $MENCODER \
+                $EXTRAOPTS $VFROTATE $VFGAMMA $VFSCALE $AUDIOOPTS \
+                -ovc lavc -lavcopts $LAVCOPTS:vpass=2 \
+                -o "$OUTFILE" -passlogfile "$LOGFILE" -demuxer avi \
+                <(ffmpeg -i "$file" -f avi -vcodec rawvideo -acodec pcm_s16le $EXTRAFFOPTS - </dev/null 2>/dev/null) && \
+            rm -f "$LOGFILE" ${DELETE_INPUT_FILE:+"$file"} || exit 1
+        fi
+    elif [ ${SINGLE_PASS:-0} -eq 1 ]; then
+        # Single pass encode, MPlayer decodes
+        $MENCODER \
+            $EXTRAOPTS $VFROTATE $VFGAMMA $VFSCALE $AUDIOOPTS \
+            -ovc lavc -lavcopts $LAVCOPTS \
+            -o "$OUTFILE" "$file" && \
+        rm -f ${DELETE_INPUT_FILE:+"$file"} || exit 1
+    else
+        # Two-pass encode, MPlayer decodes
+        LOGFILE="${OUTFILE%.*}.log"
+        $MENCODER \
+            $EXTRAOPTS $VFROTATE $VFGAMMA $VFSCALE $AUDIOOPTS \
+            -ovc lavc -lavcopts $LAVCOPTS:vpass=1:turbo \
+            -o /dev/null -passlogfile "$LOGFILE" "$file" && \
+        $MENCODER \
+            $EXTRAOPTS $VFROTATE $VFGAMMA $VFSCALE $AUDIOOPTS \
+            -ovc lavc -lavcopts $LAVCOPTS:vpass=2 \
+            -o "$OUTFILE" -passlogfile "$LOGFILE" "$file" && \
+        rm -f "$LOGFILE" ${DELETE_INPUT_FILE:+"$file"} || exit 1
+    fi
+done
