@@ -149,6 +149,32 @@ don't work properly if you use the `-s` or `-e` options. I rarely use
 these options (except for testing) so I haven't given the time to fix
 them yet, sorry.
 
+### To-do list
+
+I'm proposing adding options to allow rescaling the pixel width/height
+of the image. 
+
+Currently this script insists on keeping the picture resolution at
+720x576 or 720x480 (or less if the source is such), regardless of
+bitrate.
+
+If you have a scenario where you're severely constrained for storage and
+want to lower the bitrate significantly (e.g. 50%), usually downsampling
+the resolution of the picture instead of just dropping the bitrate
+yields better results; the picture will only look a bit softer, as
+opposed to more high-frequency noise and quilting/blocking artifacts.
+
+Explanation: DivX 5 has an upper limit on MPEG macroblock size (32x32
+pixels). Spatial downsampling enables the motion-compensation
+macroblocks to cover larger portions of the image, so the codec doesn't
+need to use as many macroblocks to describe inter-frame changes.
+
+Other proposed features:
+
+* Allow FFmpeg to be used exclusively, eliminating the need for MPlayer.
+
+* Options for specifying the audio quality level when transcoding.
+
 
 encode-cowon-d2
 ---------------
