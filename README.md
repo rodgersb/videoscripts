@@ -102,7 +102,7 @@ To get a list of options, run the script with the `-h' option:
 
 These observations are from my own personal experience. Your mileage may
 vary. These bitrates always assume the slower default two-pass mode is
-used, which gives better quality-to-bitrate than the quicker 1-pass
+used, which gives better quality-to-bitrate than the quicker one-pass
 (`-1' option) mode.
 
     * -b750: Gives VHS-like quality, with a fair bit of high-frequency
@@ -159,10 +159,10 @@ Currently this script insists on keeping the picture resolution at
 bitrate.
 
 If you have a scenario where you're severely constrained for storage and
-want to lower the bitrate significantly (e.g. 50%), usually downsampling
-the resolution of the picture instead of just dropping the bitrate
-yields better results; the picture will only look a bit softer, as
-opposed to more high-frequency noise and quilting/blocking artifacts.
+want to lower the bitrate significantly (e.g. by 50%), usually
+downsampling the resolution of the picture instead of just dropping the
+bitrate yields better results; the picture will only look a bit softer,
+as opposed to more high-frequency noise and quilting/blocking artifacts.
 
 Explanation: DivX 5 has an upper limit on MPEG macroblock size (32x32
 pixels). Spatial downsampling enables the motion-compensation
@@ -213,7 +213,7 @@ A/V profile specs:
 
   * Bitrate must not exceed 768kbps.
 
-    Audio must be in MPEG-1 layer III stereo. If playback is stuttering
+  * Audio must be in MPEG-1 layer III stereo. If playback is stuttering
     on the D2, then try re-encoding the audio using the `-A` option.
 
   * Key frame interval must not exceed 250 frames.
