@@ -234,12 +234,12 @@ battery down a little quicker for marginal increase in quality.
 
 The **big** caveat here is that the factory Cowon D2/D2+ firmware has a
 known bug where during video playback, if you perform a seek operation
-at any time, the A-V sync will then drift by 400ms for the rest of
+at any time, the A-V sync will then drift by -400ms for the rest of
 playback. I've upgraded my D2+ to the latest firmware (2.13) and this
 glitch unfortunately still persists, much to my chagrin.
 
 This script works around this issue by permanently shifting the A-V sync
-by 400ms in the other direction. When you start a video playing on the
+by +400ms in the other direction. When you start a video playing on the
 D2, you will need to let it play for a few seconds, then immediately
 jump to any location in the stream that is not the absolute beginning
 (0:00:00). This will correct the lip-sync so you can watch the rest of
