@@ -37,10 +37,8 @@ DFL_AUDIO_PRESET=standard
 # for future use and also to account for slack space (ISO9660 uses 2048
 # byte blocks for allocating files).
 DFL_OVERHEAD_FIXED_KBYTES=6
-
 # Approximation of how many kilobits of metadata per second occurs in a
 # DivX AVI file.
-
 DFL_OVERHEAD_KBITPS=5.5
 
 # List of LAME audio presets and upper-bound bitrates
