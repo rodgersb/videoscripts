@@ -138,7 +138,7 @@ Video bitrate calculator for transcoding files to DivX5 Home Theatre profile.
 
 STORAGE-BUDGET is the amount of storage (given in megabytes) that the
 output video files must need to fit within. The following
-case-insensitive keywords can also be given as shortcuts for common
+case-sensitive keywords can also be given as shortcuts for common
 media types:
 
     bluray      A single-layer Blu-ray disc (25GB)
