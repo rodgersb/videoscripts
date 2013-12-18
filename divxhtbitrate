@@ -45,6 +45,12 @@ DFL_OVERHEAD_KBITPS=5.5
 LAME_PRESET_NAMES="medium standard extreme insane"
 LAME_PRESET_BITRATES="180 210 240 320"
 
+# List of MPlayer audio format codes for the ID_AUDIO_FORMAT variable
+# returned by `mplayer -identify'.
+AUDF_MPEG1_LAYER_II=80      # MPEG-1 Layer II
+AUDF_MPEG1_LAYER_III=85     # MPEG-1 Layer III
+AUDF_DOLBY_AC3=8192         # Dolby AC-3
+
 unset DURATIONS_ON_CMD_LINE \
     GLOBAL_AUDIO_BITRATE \
     OVERHEAD_KBITPS \
@@ -52,6 +58,11 @@ unset DURATIONS_ON_CMD_LINE \
     RESERVE_KBITPS \
     RESERVE_FIXED_KBYTES \
     VERBOSE
+
+# When testing under the GNU system this is needed to help ensure that
+# this script will work under more strict POSIX-compliant systems (e.g.
+# commercial UNIXes).
+export POSIXLY_CORRECT=1
 
 # $1 = video file name
 # Returns zero exit status if success; non-zero if failure.
@@ -95,7 +106,8 @@ unset DURATIONS_ON_CMD_LINE \
 #       "QUIT": User manually exited.
 #       "ERROR": Error occurred (e.g. format unrecognised)
 #       "NONE": Cause unknown.
-mplayer_identify() {
+mplayer_identify()
+{
     unset ID_EXIT
     if ! [ -e "$1" ]; then
         echo "error: cannot find file \`$1'" >&2
@@ -105,14 +117,15 @@ mplayer_identify() {
         return 1
     fi
     eval `mplayer -noconfig all -cache-min 0 -identify -really-quiet -vo null -ao null -frames 0 "$1" 2>/dev/null \
-        | { while read line; do printf '%q\n' "$line"; done; }`
+        | sed '/^\w\+=/!d; s/\([^-[:alnum:]=_.:/+@,^]\)/\\\\\1/g'`
     if [ "$ID_EXIT" != EOF ]; then
         echo "error: unable to retrieve information for file \`$1'" >&2
         return 1
     fi
 }
 
-print_help() {
+print_help()
+{
     cat <<EOF
 Usage: $PROGNAME [OPTION...] STORAGE-BUDGET SOURCE-VIDEO-FILES...
    or: $PROGNAME [OPTION...] -t -A AUDIO-BITRATE STORAGE-BUDGET DURATIONS...
@@ -155,14 +168,17 @@ up the given storage budget.
 EOF
 }
 
-print_try_help() {
+print_try_help()
+{
     echo "Try \`$PROGNAME -h' for more information." >&2
 }
 
-assert_have_program() {
+assert_have_program()
+{
+    local prog
     for prog in $*; do
         if ! which $prog >/dev/null 2>&1; then
-            echo "error: program \`$prog' is needed in the system path to run this script." >&2
+            echo "$PROGNAME: error: program \`$prog' is needed in the system path to run this script." >&2
             exit 1
         fi
     done
@@ -207,8 +223,9 @@ bc_start()
 # Sends a line of input asynchronously to the POSIX bc co-process. Each
 # argument is sent as an individual line. Any results that these
 # statements might produce can be read back through bc_read_result.
-bc_run_cmd()
+bc_run_cmds()
 {
+    local arg
     for arg; do
         echo "$arg" >&4
     done
@@ -220,6 +237,7 @@ bc_run_cmd()
 # arguments than there are lines pending, otherwise deadlock will occur.
 bc_read_result()
 {
+    local arg
     for arg; do
         read $arg <&5
     done
@@ -264,12 +282,17 @@ is_duration_arg()
 # validated via the `is_duration_arg' function.
 normalise_duration_arg()
 {
+    local hr min sec
     if [ `expr match "$1" '[0-9]\+:[0-9]\+:[0-9]\+\.\?[0-9]*$'` -gt 0 ]; then
-        set -- ${1//:/ }
-        echo "(${1}*3600+${2}*60+${3})"
+        hr=${1%%:*}
+        min=${1%:*}
+        min=${min#*:}
+        sec=${1##*:}
+        echo "(${hr}*3600+${min}*60+${sec})"
     elif [ `expr match "$1" '[0-9]\+:[0-9]\+\.\?[0-9]*$'` -gt 0 ]; then
-        set -- ${1//:/ }
-        echo "(${1}*60+${2})"
+        min=${1%%:*}
+        sec=${1##*:}
+        echo "(${min}*60+${sec})"
     elif [ `expr match "$1" '[0-9]*\.\?[0-9]\+$'` -gt 0 ]; then
         echo "$1"
     fi
@@ -281,6 +304,7 @@ normalise_duration_arg()
 # Returns exit code 0 if valid; exit code 1 otherwise.
 is_audio_bitrate()
 {
+    local preset
     if [ `expr match "$1" '[0-9]*\.\?[0-9]\+$'` -gt 0 ]; then
         return 0
     fi
@@ -301,6 +325,7 @@ is_audio_bitrate()
 # corresponds to "no audio track".
 lame_preset_to_kbps()
 {
+    local arg preset
     arg="$1"
     if [ `expr match "$arg" '[0-9]*\.\?[0-9]\+$'` -gt 0 ]; then
         echo "$arg"
@@ -335,7 +360,7 @@ lame_preset_to_kbps()
 media_preset_to_mb()
 {
     if [ `expr match "$1" '[0-9]*\.\?[0-9]\+$'` -gt 0 ] \
-            && [ `echo "z=0; if($1 > 0) { z=1; }; z" | bc -qs` -eq 1 ]; then
+            && [ `echo "z = 0; if($1 > 0) { z = 1; }; z" | bc -q` -eq 1 ]; then
         echo "$1"
         return 0
     fi
@@ -362,6 +387,7 @@ OVERHEAD_KBITPS=$DFL_OVERHEAD_KBITPS
 RESERVE_FIXED_KBYTES=0
 RESERVE_KBITPS=0
 VERBOSE=0
+DURATIONS_ON_CMD_LINE=0
 
 while getopts "A:O:o:R:r:thv" opt; do
     case $opt in
@@ -423,8 +449,7 @@ if [ $# -lt 1 ]; then
     echo "$PROGNAME: error: the storage budget must be specified" >&2
     print_try_help
     exit 1
-fi
-if ! STORAGE_BUDGET_MB=`media_preset_to_mb "$1"`; then
+elif ! STORAGE_BUDGET_MB=`media_preset_to_mb "$1"`; then
     echo "$PROGNAME: error: storage budget must be given as a positive real number (in megabytes) or a pre-set keyword: $1" >&2
     print_try_help
     exit 1
@@ -435,7 +460,7 @@ shift
 # $DURATIONS_ON_CMD_LINE is unset, or durations if
 # $DURATIONS_ON_CMD_LINE is 1.
 if [ $# -lt 1 ]; then
-    if [ ${DURATIONS_ON_CMD_LINE:-0} -eq 1 ]; then
+    if [ $DURATIONS_ON_CMD_LINE -eq 1 ]; then
         echo "$PROGNAME: error: file durations must be specified after storage budget" >&2
         print_try_help
         exit 1
@@ -446,7 +471,7 @@ if [ $# -lt 1 ]; then
     fi
 fi
 
-if [ ${DURATIONS_ON_CMD_LINE:-0} -eq 1 ]; then
+if [ $DURATIONS_ON_CMD_LINE -eq 1 ]; then
     for dur; do
         if ! is_duration_arg "$dur"; then
             echo "$PROGNAME: error: durations must be in the form \`hh:mm:ss', \`mm:ss' or an absolute number of seconds: $dur" >&2
@@ -485,22 +510,22 @@ bc_start
 #   x   Temporary: reserved bits for current file
 #   y   Temporary: audio bits for current file
 #   z   Used to temporarily store the result of conditionals
-bc_run_cmd t=0 s=${STORAGE_BUDGET_MB}\*8000000 a=0 o=0 r=0
+bc_run_cmds t=0 "s = ${STORAGE_BUDGET_MB} * 8000000" a=0 o=0 r=0
 if [ $VERBOSE -eq 1 ]; then
-    bc_run_cmd s
+    bc_run_cmds s
     bc_read_result storage_bits
     echo "storage_bits: $storage_bits"
 fi
 
-if [ ${DURATIONS_ON_CMD_LINE:-0} -eq 1 ]; then
+if [ $DURATIONS_ON_CMD_LINE -eq 1 ]; then
     for dur; do
         norm_dur_exp=`normalise_duration_arg $dur`
-        bc_run_cmd \
-            w=${OVERHEAD_FIXED_KBYTES}\*8000+${OVERHEAD_KBITPS}\*1000\*${norm_dur_exp} \
-            x=${RESERVE_FIXED_KBYTES}\*8000+${RESERVE_KBITPS}\*1000\*${norm_dur_exp} \
-            y=${GLOBAL_AUDIO_BITRATE:-$DFL_AUDIO_BITRATE}\*1000\*${norm_dur_exp}
+        bc_run_cmds \
+            "w = ${OVERHEAD_FIXED_KBYTES} * 8000 + ${OVERHEAD_KBITPS} * 1000 * ${norm_dur_exp}" \
+            "x = ${RESERVE_FIXED_KBYTES} * 8000 + ${RESERVE_KBITPS} * 1000 * ${norm_dur_exp}" \
+            "y = ${GLOBAL_AUDIO_BITRATE:-$DFL_AUDIO_BITRATE} * 1000 * ${norm_dur_exp}"
         if [ $VERBOSE -eq 1 ]; then
-            bc_run_cmd "$norm_dur_exp" w x y
+            bc_run_cmds "$norm_dur_exp" w x y
             bc_read_result norm_dur overhead_bits reserved_bits audio_bits
             echo "duration: $dur" \
                 "norm_dur=$norm_dur" \
@@ -508,28 +533,30 @@ if [ ${DURATIONS_ON_CMD_LINE:-0} -eq 1 ]; then
                 "reserved_bits=$reserved_bits" \
                 "audio_bits=$audio_bits"
         fi
-        bc_run_cmd t=t+${norm_dur_exp} o+=w r+=x a+=y
+        bc_run_cmds t+=${norm_dur_exp} o+=w r+=x a+=y
     done
 else
     for file; do
         mplayer_identify "$file"
-        bc_run_cmd z=0 "if(${ID_LENGTH}==0) { z=1 }" z
+        bc_run_cmds "z = 0; if(${ID_LENGTH} == 0) { z = 1; }; z"
         bc_read_result length_is_zero
         if [ $length_is_zero -eq 1 ]; then
             echo "$PROGNAME: error: unable to determine playback duration of file \`$file'" >&2
             bc_end
             exit 1
         fi
-        bc_run_cmd \
-            w=${OVERHEAD_FIXED_KBYTES}\*8000+${OVERHEAD_KBITPS}\*1000\*${ID_LENGTH} \
-            x=${RESERVE_FIXED_KBYTES}\*8000+${RESERVE_KBITPS}\*1000\*${ID_LENGTH}
-        if [ $ID_AUDIO_FORMAT = 80 -o $ID_AUDIO_FORMAT = 85 -o $ID_AUDIO_FORMAT = 8192 ]; then
-            bc_run_cmd y=${ID_AUDIO_BITRATE}\*${ID_LENGTH}
+        bc_run_cmds \
+            "w = ${OVERHEAD_FIXED_KBYTES} * 8000 + ${OVERHEAD_KBITPS} * 1000 * ${ID_LENGTH}" \
+            "x = ${RESERVE_FIXED_KBYTES} * 8000 + ${RESERVE_KBITPS} * 1000 * ${ID_LENGTH}"
+        if [ $ID_AUDIO_FORMAT = $AUDF_MPEG1_LAYER_II \
+                -o $ID_AUDIO_FORMAT = $AUDF_MPEG1_LAYER_III \
+                -o $ID_AUDIO_FORMAT = $AUDF_DOLBY_AC3 ]; then
+            bc_run_cmds "y = ${ID_AUDIO_BITRATE} * ${ID_LENGTH}"
         else
-            bc_run_cmd y=${GLOBAL_AUDIO_BITRATE:-$DFL_AUDIO_BITRATE}\*1000\*${ID_LENGTH}
+            bc_run_cmds "y = ${GLOBAL_AUDIO_BITRATE:-$DFL_AUDIO_BITRATE} * 1000 * ${ID_LENGTH}"
         fi
         if [ $VERBOSE -eq 1 ]; then
-            bc_run_cmd w x y
+            bc_run_cmds w x y
             bc_read_result overhead_bits reserved_bits audio_bits
             echo "file: $file" \
                 "length=$ID_LENGTH" \
@@ -539,12 +566,12 @@ else
                 "reserved_bits=$reserved_bits" \
                 "audio_bits=$audio_bits"
         fi
-        bc_run_cmd t=t+${ID_LENGTH} o+=w r+=x a+=y
+        bc_run_cmds t+=${ID_LENGTH} o+=w r+=x a+=y
     done
 fi
 
 if [ $VERBOSE -eq 1 ]; then
-    bc_run_cmd t o r a "(s-o-r-a)"
+    bc_run_cmds t o r a "(s - o - r - a)"
     bc_read_result total_duration total_overhead_bits total_reserved_bits \
         total_audio_bits total_video_bits
     echo "total_duration: $total_duration"
@@ -554,7 +581,7 @@ if [ $VERBOSE -eq 1 ]; then
     echo "total_video_bits: $total_video_bits"
 fi
 
-bc_run_cmd "z = 0; if(t == 0) { z = 1; }; z"
+bc_run_cmds "z = 0; if(t == 0) { z = 1; }; z"
 bc_read_result total_dur_is_zero
 if [ $total_dur_is_zero -eq 1 ]; then
     echo "$PROGNAME: error: total duration is zero seconds, cannot compute a bitrate for this." >&2
@@ -562,7 +589,7 @@ if [ $total_dur_is_zero -eq 1 ]; then
     exit 1
 fi
 
-bc_run_cmd "b=(s-o-r-a)/t/1000" \
+bc_run_cmds "b = (s - o - r - a) / t / 1000" \
     "if(b > $MAX_VBITRATE) { b = $MAX_VBITRATE; }" \
     "if(b < $MIN_VBITRATE) { b = $MIN_VBITRATE; }" \
     b
