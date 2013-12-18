@@ -21,7 +21,7 @@
 # this script:
 #   * MPlayer <http://mplayerhq.hu/>
 #   * A POSIX-compatible bc implementation (GNU bc is also good)
-#   * GNU fileutils/coreutils <http://www.gnu.org/software/fileutils/>
+#   * GNU coreutils <http://www.gnu.org/software/coreutils/>
 #       (for the `mkfifo' command needed to create named pipes)
 
 # Name of this script, used for displaying error messages.
@@ -357,12 +357,18 @@ lame_preset_to_kbps()
 # be printed to standard output verbatim.
 #
 # Returns exit code 0 if argument is valid; exit code 1 otherwise.
+# Requires the bc co-process to be started beforehand.
 media_preset_to_mb()
 {
-    if [ `expr match "$1" '[0-9]*\.\?[0-9]\+$'` -gt 0 ] \
-            && [ `echo "z = 0; if($1 > 0) { z = 1; }; z" | bc -q` -eq 1 ]; then
-        echo "$1"
-        return 0
+    local bitrate_is_positive
+    if [ `expr match "$1" '[0-9]*\.\?[0-9]\+$'` -gt 0 ]; then
+        bc_run_cmds "z = 0; if($1 > 0) { z = 1; }; z"
+        bc_read_result bitrate_is_positive
+        if [ $bitrate_is_positive -eq 1 ]; then
+            echo "$1"
+            return 0
+        fi
+        return 1
     fi
 
     case "$1" in
@@ -388,6 +394,18 @@ RESERVE_FIXED_KBYTES=0
 RESERVE_KBITPS=0
 VERBOSE=0
 DURATIONS_ON_CMD_LINE=0
+
+# This is a quick "early out" test if the help message is requested, so
+# that we can avoid having to start up the bc co-process that would just
+# go unused in that case. The rest of the command-line arguments
+# processing may need it.
+if [ "$1" == "-h" ]; then
+    print_help
+    exit 0
+fi
+
+assert_have_program bc mplayer mkfifo
+bc_start
 
 while getopts "A:O:o:R:r:thv" opt; do
     case $opt in
@@ -493,10 +511,6 @@ else
         fi
     done
 fi
-
-# Note: mkfifo is part of GNU fileutils
-assert_have_program mplayer mkfifo
-bc_start
 
 # List of bc session variables (POSIX bc only permits single-letter names):
 #   b   Final computed video bitrate
