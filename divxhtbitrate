@@ -116,7 +116,8 @@ mplayer_identify()
         echo "error: \`$1' is not a file" >&2
         return 1
     fi
-    eval `mplayer -noconfig all -cache-min 0 -identify -really-quiet -vo null -ao null -frames 0 "$1" 2>/dev/null \
+    # Note: the aspect ratio does not become available until we play at least 1 frame
+    eval `mplayer -noconfig all -cache-min 0 -identify -really-quiet -vo null -ao null -frames 1 "$1" 2>/dev/null \
         | sed '/^\w\+=/!d; s/\([^-[:alnum:]=_.:/+@,^]\)/\\\\\1/g'`
     if [ "$ID_EXIT" != EOF ]; then
         echo "error: unable to retrieve information for file \`$1'" >&2
