@@ -110,17 +110,17 @@ mplayer_identify()
 {
     unset ID_EXIT
     if ! [ -e "$1" ]; then
-        echo "error: cannot find file \`$1'" >&2
+        echo "$PROGNAME: error: cannot find file \`$1'" >&2
         return 1
     elif ! [ -f "$1" ]; then
-        echo "error: \`$1' is not a file" >&2
+        echo "$PROGNAME: error: \`$1' is not a file" >&2
         return 1
     fi
     # Note: the aspect ratio does not become available until we play at least 1 frame
     eval `mplayer -noconfig all -cache-min 0 -identify -really-quiet -vo null -ao null -frames 1 "$1" 2>/dev/null \
         | sed '/^\w\+=/!d; s/\([^-[:alnum:]=_.:/+@,^]\)/\\\\\1/g'`
     if [ "$ID_EXIT" != EOF ]; then
-        echo "error: unable to retrieve information for file \`$1'" >&2
+        echo "$PROGNAME: error: unable to retrieve information for file \`$1'" >&2
         return 1
     fi
 }
@@ -244,6 +244,21 @@ bc_read_result()
     done
 }
 
+# Performs a relational operator test using the POSIX bc co-process. The
+# first and only argument must consist of the form "x OP y", where x and
+# y are real numbers or single-letter bc variables, and OP is one of the
+# relational operators ==, <, >, !=, <= or >=. Return status is zero if
+# the expression evalutes as true, or non-zero if expression evaluated
+# as false.
+bc_run_test()
+{
+    local res;
+    echo -e "if($1) { \"true\"; }; \"\n\""  >&4
+    read res <&5
+    [ "$res" = true ] && return 0;
+    return 1;
+}
+
 # Terminates the POSIX bc co-process.
 bc_end()
 {
@@ -361,11 +376,8 @@ lame_preset_to_kbps()
 # Requires the bc co-process to be started beforehand.
 media_preset_to_mb()
 {
-    local bitrate_is_positive
     if [ `expr match "$1" '[0-9]*\.\?[0-9]\+$'` -gt 0 ]; then
-        bc_run_cmds "z = 0; if($1 > 0) { z = 1; }; z"
-        bc_read_result bitrate_is_positive
-        if [ $bitrate_is_positive -eq 1 ]; then
+        if bc_run_test "$1 > 0"; then
             echo "$1"
             return 0
         fi
@@ -524,7 +536,6 @@ fi
 #   w   Temporary: overhead bits for current file
 #   x   Temporary: reserved bits for current file
 #   y   Temporary: audio bits for current file
-#   z   Used to temporarily store the result of conditionals
 bc_run_cmds t=0 "s = ${STORAGE_BUDGET_MB} * 8000000" a=0 o=0 r=0
 if [ $VERBOSE -eq 1 ]; then
     bc_run_cmds s
@@ -553,10 +564,9 @@ if [ $DURATIONS_ON_CMD_LINE -eq 1 ]; then
 else
     for file; do
         mplayer_identify "$file"
-        bc_run_cmds "z = 0; if(${ID_LENGTH} == 0) { z = 1; }; z"
-        bc_read_result length_is_zero
-        if [ $length_is_zero -eq 1 ]; then
-            echo "$PROGNAME: error: unable to determine playback duration of file \`$file'" >&2
+        if bc_run_test "${ID_LENGTH} == 0"; then
+            echo "$PROGNAME: error: MPlayer is unable to determine playback duration of file \`$file'."\
+" Use the \`-t' option and specify the duration explicitly as a work-around." >&2
             bc_end
             exit 1
         fi
@@ -596,18 +606,25 @@ if [ $VERBOSE -eq 1 ]; then
     echo "total_video_bits: $total_video_bits"
 fi
 
-bc_run_cmds "z = 0; if(t == 0) { z = 1; }; z"
-bc_read_result total_dur_is_zero
-if [ $total_dur_is_zero -eq 1 ]; then
+if bc_run_test "t == 0"; then
     echo "$PROGNAME: error: total duration is zero seconds, cannot compute a bitrate for this." >&2
     bc_end
     exit 1
 fi
 
 bc_run_cmds "b = (s - o - r - a) / t / 1000" \
-    "if(b > $MAX_VBITRATE) { b = $MAX_VBITRATE; }" \
-    "if(b < $MIN_VBITRATE) { b = $MIN_VBITRATE; }" \
-    b
+    "if(b > $MAX_VBITRATE) { b = $MAX_VBITRATE; }"
+
+if bc_run_test "b < $MIN_VBITRATE"; then
+    bc_run_cmds t
+    bc_read_result total_duration
+    echo "$PROGNAME: failure: can't fit ${total_duration}s of video"\
+" into ${STORAGE_BUDGET_MB}MB of storage given audio/overhead/reserved bitrate constraints." >&2
+    bc_end
+    exit 1
+fi
+
+bc_run_cmds b
 bc_read_result vbitrate_kbps
 echo $vbitrate_kbps
 
