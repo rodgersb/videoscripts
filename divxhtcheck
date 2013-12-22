@@ -191,6 +191,21 @@ bc_read_result()
     done
 }
 
+# Performs a relational operator test using the POSIX bc co-process. The
+# first and only argument must consist of the form "x OP y", where x and
+# y are real numbers or single-letter bc variables, and OP is one of the
+# relational operators ==, <, >, !=, <= or >=. Return status is zero if
+# the expression evalutes as true, or non-zero if expression evaluated
+# as false.
+bc_run_test()
+{
+    local res;
+    echo -e "if($1) { \"true\"; }; \"\n\""  >&4
+    read res <&5
+    [ "$res" = true ] && return 0;
+    return 1;
+}
+
 # Terminates the POSIX bc co-process.
 bc_end()
 {
@@ -256,17 +271,13 @@ divxht_test()
     fi
 
     # Confirm frame rate does not exceed 30fps
-    bc_run_cmds "z = 0; if($ID_VIDEO_FPS <= 30) { z = 1; }; z"
-    bc_read_result fps_le_30
-    if [ $fps_le_30 -ne 1 ]; then
+    if bc_run_test "$ID_VIDEO_FPS > 30"; then
         echo "$PROGNAME: failure: \`$1' frame rate exceeds 30fps: $ID_VIDEO_FPS" >&2
         failed=1
     fi
 
     # Video pixel height check
-    bc_run_cmds "z = 0; if($ID_VIDEO_FPS > 25) { z = 1; }; z"
-    bc_read_result fps_gt_25
-    if [ $fps_gt_25 -eq 1 ]; then
+    if bc_run_test "$ID_VIDEO_FPS > 25"; then
         # Must not exceed 480 if 25 < fps <= 30 (NTSC)
         if [ $ID_VIDEO_HEIGHT -gt 480 ]; then
             echo "$PROGNAME: failure: \`$1' video pixel height exceeds 480 for NTSC mode: $ID_VIDEO_HEIGHT" >&2
@@ -290,44 +301,46 @@ divxht_test()
     fi
 
     # Warn if aspect ratio is missing
-    bc_run_cmds "z = 0; if($ID_VIDEO_ASPECT == 0) { z = 1; }; z"
-    bc_read_result aspect_is_missing
-    if [ $aspect_is_missing -eq 1 ]; then
-        echo "$PROGNAME: warning: \`$1' does not have a video aspect ratio specified. DivX-HT players will assume square pixels which may be incorrect." >&2
+    if bc_run_test "$ID_VIDEO_ASPECT == 0"; then
+        echo "$PROGNAME: warning: \`$1' does not have a video aspect ratio specified."\
+" Most DivX-HT hardware players will assume square pixels, which might not be what was intended." >&2
     fi
 
-    # Check if DivX MPEG-4 stream contains bidirectional predictive
-    # frames (B-frames); the Panasonic NV-VP60 will not decode these
-    # frames and will skip over them, causing jerky motion in playback.
-    #
-    # MPlayer produces a warning message when they are encountered, and
-    # claims that they are not part of the DivX specification. The only
-    # way we can detect these frames is to play back a brief portion of
-    # the movie and monitor MPlayer's diagnostic output.
+    # Check if DivX MPEG-4 stream contains multiple consecutive
+    # bi-directional predictive frames (B-frames); this is a violation
+    # of the DivX 5 HT spec, and most hardware players (such as the
+    # Panasonic NV-VP60) won't decode these frames, resulting in jerky
+    # motion.
+    # 
+    # MPlayer produces a warning message when they are encountered. The
+    # only way we can detect these frames is to play back a brief
+    # portion of the movie and monitor MPlayer's diagnostic output.
     if mplayer -vo null -ao null -frames 1 -benchmark -quiet "$1" 2>&1 \
         | grep -q "$MPLAYER_WARN_BFRAMES_TEXT"; then
-        echo "$PROGNAME: failure: \`$1' contains B-type frames and must be re-encoded" >&2
+        echo "$PROGNAME: failure: \`$1' contains multiple consecutive B-type frames and must be re-encoded" >&2
         failed=1
     fi
 
     # Check if OpenDML index would cause problems
     file_size=`wc -c "$1" | sed 's/^[[:blank:]]*\([0-9]\+\).*$/\1/'`
-    bc_run_cmds "z = 0; if($file_size > 1073741824) { z = 1; }; z"
-    bc_read_result file_exceeds_1_gigabyte
-    if [ $file_exceeds_1_gigabyte -eq 1 ]; then
+    if bc_run_test "$file_size > 1073741824"; then
         # If file is >= 1GB, it must not contain an OpenDML index,
         # otherwise playback on the Panasonic NV-VP60 will experience
         # major problems when the 1GB boundary is trangressed (A-V
-        # desync, loss of audio or premature end of playback).
+        # desync, loss of audio or premature end of playback). MPlayer
+        # without the -noodml option normally starts a new RIFF chunk at
+        # every 1GB mark, so the cause seems to be that the NV-VP60 only
+        # understands the first RIFF chunk of the file.
         #
         # Scan first 8kB of AVI file for a "dmlh" chunk (OpenDML header)
+        # FIXME: A better approach would be to decode the AVI structure and
+        # look for multiple RIFF chunks? May be difficult in Bourne Shell.
         if dd if="$1" bs=8192 count=1 2>/dev/null | strings -a -T binary | grep -q odmldmlh; then
             echo "$PROGNAME: failure: \`$1' exceeds 1GB and contains an OpenDML index" >&2
             failed=1
         fi
     fi
 
-    unset fps_le_30 fps_gt_25 file_exceeds_1_gigabyte aspect_is_missing
     return $failed
 }
 
@@ -340,9 +353,6 @@ done
 shift $(($OPTIND-1))
 
 assert_have_program bc mplayer mkfifo
-
-# List of bc session variables (POSIX bc only permits single-letter names):
-#   z   Used to temporarily store the result of conditionals
 bc_start
 
 exit_status=0
