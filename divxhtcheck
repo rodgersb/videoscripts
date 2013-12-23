@@ -222,14 +222,31 @@ divxht_test()
     local failed
     failed=0
 
+    # Check if file exists and is a regular file
+    if ! [ -e "$1" ]; then
+        echo "$PROGNAME: error: file \`$1' does not exist" >&2
+        return 1
+    elif ! [ -f "$1" ]; then
+        echo "$PROGNAME: error: file \`$1' is not a regular file" >&2
+        return 1
+    fi
+
     # Confirm AVI file extension
     if [ `expr match "$1" '.*\.[Aa][Vv][Ii]$'` -eq 0 ]; then
         echo "$PROGNAME: failure: \`$1' does not have file extension \`.avi'" >&2
         return 1
     fi
 
-    if [ `expr match "${1##*/}" '.*\.[Aa][Vv][Ii]$'` -gt 60 ]; then
-        echo "$PROGNAME: failure: \`$1' file name is longer than 64 characters" >&2
+    # Check if file name length exceeds 64 characters (strip away
+    # directory components first). This will cause problems if the file
+    # is burned onto an optical disc containing an ISO 9660 filesystem
+    # with Joliet extensions, as most hardware DivX players and non-UNIX
+    # OSes will not use the Rock-Ridge extensions. The file name will
+    # usually appear truncated on these systems. The Panasonic NV-VP60
+    # will omit such files from the playlist menu.
+    if [ `expr length "${1##*/}"` -gt 64 ]; then
+        echo "$PROGNAME: failure: \`$1' file name is longer than 64 characters"\
+" and may not be recognised properly on a Joliet ISO 9660 file system." >&2
         return 1
     fi
 
@@ -239,11 +256,13 @@ divxht_test()
 
     # Confirm AVI container
     if [ "$ID_DEMUXER" != avi ]; then
-        echo "$PROGNAME: failure: \`$1' is not in avi container format: $ID_DEMUXER" >&2
+        echo "$PROGNAME: failure: \`$1' is not in AVI container format: $ID_DEMUXER" >&2
         failed=1
     fi
 
-    # Confirm video FourCC is "DX50", "DIVX", "XVID" or "DIV3"
+    # Confirm video FourCC is "DX50", "DIVX", "XVID" or "DIV3". The
+    # Panasonic NV-VP60 accepts "XVID" as a FourCC for DivX v5, but need
+    # to see if this is common among other players.
     if [ "$ID_VIDEO_FORMAT" != DX50 \
         -a "$ID_VIDEO_FORMAT" != DIVX \
         -a "$ID_VIDEO_FORMAT" != XVID \
@@ -258,9 +277,9 @@ divxht_test()
         failed=1
     fi
 
-    # Confirm video bitrate does not exceed 4Mbps
+    # Confirm average video bitrate does not exceed 4Mbps
     if [ $ID_VIDEO_BITRATE -gt 4000000 ]; then
-        echo "$PROGNAME: failure: \`$1' video bitrate exceeds 4Mbps: $ID_VIDEO_BITRATE" >&2
+        echo "$PROGNAME: failure: \`$1' average video bitrate exceeds 4Mbps: ${ID_VIDEO_BITRATE}bps" >&2
         failed=1
     fi
 
@@ -296,7 +315,8 @@ divxht_test()
             -a $ID_AUDIO_FORMAT -ne $AUDF_MPEG1_LAYER_III \
             -a $ID_AUDIO_FORMAT -ne $AUDF_DOLBY_AC3 ]; then
         # Unrecognised audio format
-        echo "$PROGNAME: failure: \`$1' audio format is unrecognised: $ID_AUDIO_FORMAT ($ID_AUDIO_CODEC)" >&2
+        echo "$PROGNAME: failure: audio stream in \`$1' is not supported by the DivX 5 Home Theatre profile:"\
+" $ID_AUDIO_FORMAT ($ID_AUDIO_CODEC) and must be re-encoded to MPEG-1 layer II/III or Dolby AC-3." >&2
         failed=1
     fi
 
@@ -309,8 +329,8 @@ divxht_test()
     # Check if DivX MPEG-4 stream contains multiple consecutive
     # bi-directional predictive frames (B-frames); this is a violation
     # of the DivX 5 HT spec, and most hardware players (such as the
-    # Panasonic NV-VP60) won't decode these frames, resulting in jerky
-    # motion.
+    # Panasonic NV-VP60) won't decode these extra B-frames, resulting in
+    # jerky motion.
     # 
     # MPlayer produces a warning message when they are encountered. The
     # only way we can detect these frames is to play back a brief
