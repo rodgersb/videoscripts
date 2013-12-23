@@ -50,7 +50,7 @@ export POSIXLY_CORRECT=1
 print_help()
 {
     cat <<EOF
-Usage: $PROGNAME AVIFILE..."
+Usage: $PROGNAME AVIFILE...
 Checks a list of AVI files for DivX Home Theatre compliance.
 EOF
 }
