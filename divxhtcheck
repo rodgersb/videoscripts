@@ -327,7 +327,7 @@ divxht_test()
         # If file is >= 1GB, it must not contain an OpenDML index,
         # otherwise playback on the Panasonic NV-VP60 will experience
         # major problems when the 1GB boundary is trangressed (A-V
-        # desync, loss of audio or premature end of playback). MPlayer
+        # desync, loss of audio or premature end of playback). MEncoder
         # without the -noodml option normally starts a new RIFF chunk at
         # every 1GB mark, so the cause seems to be that the NV-VP60 only
         # understands the first RIFF chunk of the file.
