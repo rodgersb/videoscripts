@@ -116,6 +116,10 @@ LAME_PRESETS="medium:180 standard:210 extreme:240 insane:320"
 # commercial UNIXes).
 export POSIXLY_CORRECT=1
 
+# Almquist shell doesn't expand \n in strings, so this is a workaround.
+LF="
+"
+
 print_error()
 {
     echo -e "$PROGNAME: error: $1" >&2
@@ -162,9 +166,7 @@ fmt_help()
     while read line; do
         if [ $in_desc -eq 1 ]; then
             if [ `expr match "$line" '[-#]'` -eq 0 ]; then
-                # Almquist shell won't process \n
-                desc_text="${desc_text}${line}
-"
+                desc_text="${desc_text}${line}${LF}"
                 continue
             fi
             in_desc=0
@@ -195,8 +197,7 @@ fmt_help()
             in_desc=1
             desc_text=""
             if [ ${#opt_hdr} -ge $(($OPT_COLS - 1)) ]; then
-                printf '%s' "$opt_hdr
-$DESC_INDENT_STR"
+                printf '%s' "$opt_hdr${LF}$DESC_INDENT_STR"
             else
                 printf "%-${OPT_COLS}s" "$opt_hdr"
             fi
@@ -517,7 +518,7 @@ bc_read_result()
 bc_run_test()
 {
     local res;
-    echo -e "if($1) { \"true\"; }; \"\n\""  >&4
+    echo -e "if($1) { \"true\"; }; \"${LF}\""  >&4
     read res <&5
     [ "$res" = true ] && return 0;
     return 1;
@@ -886,7 +887,7 @@ fi
 
 unset MANUAL_VBITRATE_KBPS BUDGET_FILESIZE_MB FORCED_ASPECT \
     DOWNSCALE_WIDTH DOWNSCALE_HEIGHT MANUAL_CROP \
-    AC3_BITRATE AAC_BITRATE
+    AC3_BITRATE AAC_BITRATE OUTDIR
 SINGLE_PASS=0
 FORCE_REENCODE_AUDIO=0
 REENCODE_AUDIO_MP3=0
@@ -911,6 +912,7 @@ USE_GMC=0
 USE_QPEL=0
 USE_BFRAMES_INTERLACED=0
 USE_OPENDML=0
+USE_XVID=0
 FORCE_MPEG4_STD_PAR=1
 FORCE_SQUARE_PIXELS=0
 DRY_RUN=0
