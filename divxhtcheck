@@ -35,6 +35,10 @@ AUDF_DOLBY_AC3=8192         # Dolby AC-3
 VIDCODEC_DIVX3=ffdivx
 # Codec string MPlayer uses to identify DIVX v5 video streams
 VIDCODEC_DIVX5=ffodivx
+# Maximum average video bitrate permitted in DivX 5 Home Theatre profile (bps)
+DIVXHT_MAX_AVG_VBITRATE_BPS=4000000
+# Valid AVI FourCC codes accepted by DivX HT hardware players (separated by whitespace)
+DIVXHT_VALID_FOURCCS="DX50 DIVX XVID DIV3"
 
 # Warning message fragment that MPlayer produces if it plays a DivX
 # video stream with non-standard bi-directional predictive frames (i.e.
@@ -115,19 +119,23 @@ assert_have_program()
 #       "NONE": Cause unknown.
 mplayer_identify()
 {
-    unset ID_EXIT
+    unset ID_VIDEO_ID ID_AUDIO_ID ID_CLIP_INFO_N ID_FILENAME ID_DEMUXER \
+        ID_VIDEO_FORMAT ID_VIDEO_BITRATE ID_VIDEO_WIDTH ID_VIDEO_HEIGHT \
+        ID_VIDEO_FPS ID_VIDEO_ASPECT ID_VIDEO_CODEC ID_AUDIO_FORMAT \
+        ID_AUDIO_BITRATE ID_AUDIO_RATE ID_AUDIO_NCH ID_AUDIO_CODEC \
+        ID_LENGTH ID_EXIT
     if ! [ -e "$1" ]; then
-        echo "$PROGNAME: error: cannot find file \`$1'" >&2
+        echo "$PROGNAME: error: file \`$1' does not exist" >&2
         return 1
     elif ! [ -f "$1" ]; then
-        echo "$PROGNAME: error: \`$1' is not a file" >&2
+        echo "$PROGNAME: error: \`$1' is not a regular file" >&2
         return 1
     fi
     # Note: the aspect ratio does not become available until we play at least 1 frame
     eval `mplayer -noconfig all -cache-min 0 -identify -really-quiet -vo null -ao null -frames 1 "$1" 2>/dev/null \
         | sed '/^\w\+=/!d; s/\([^-[:alnum:]=_.:/+@,^]\)/\\\\\1/g'`
     if [ "$ID_EXIT" != EOF ]; then
-        echo "$PROGNAME: error: unable to retrieve information for file \`$1'" >&2
+        echo "$PROGNAME: error: MPlayer was unable to retrieve information for file \`$1'" >&2
         return 1
     fi
 }
@@ -214,22 +222,13 @@ bc_end()
 }
 
 # Tests if a file is DivX Home Theatre compliant
-# $1 = file to test
+# $1 = name of file to test
 # Returns zero exit status if compliant; non-zero otherwise.
 # Messages will be printed to standard error explaining any failures.
 divxht_test()
 {
-    local failed
+    local failed fourcc fourcc_is_valid vbitrate_mbps file_size
     failed=0
-
-    # Check if file exists and is a regular file
-    if ! [ -e "$1" ]; then
-        echo "$PROGNAME: error: file \`$1' does not exist" >&2
-        return 1
-    elif ! [ -f "$1" ]; then
-        echo "$PROGNAME: error: file \`$1' is not a regular file" >&2
-        return 1
-    fi
 
     # Confirm AVI file extension
     if [ `expr match "$1" '.*\.[Aa][Vv][Ii]$'` -eq 0 ]; then
@@ -250,6 +249,7 @@ divxht_test()
         return 1
     fi
 
+    # Also catches cases of file not found (or is not a regular file)
     if ! mplayer_identify "$1"; then
         return 1
     fi
@@ -261,13 +261,17 @@ divxht_test()
     fi
 
     # Confirm video FourCC is "DX50", "DIVX", "XVID" or "DIV3". The
-    # Panasonic NV-VP60 accepts "XVID" as a FourCC for DivX v5, but need
-    # to see if this is common among other players.
-    if [ "$ID_VIDEO_FORMAT" != DX50 \
-        -a "$ID_VIDEO_FORMAT" != DIVX \
-        -a "$ID_VIDEO_FORMAT" != XVID \
-        -a "$ID_VIDEO_FORMAT" != DIV3 ]; then
-        echo "$PROGNAME: failure: \`$1' video fourcc is not \`DX50', \`DIVX', \`XVID' or \`DIV3': $ID_VIDEO_FORMAT" >&2
+    # Panasonic NV-VP60 accepts "XVID" as a FourCC for DivX v5, but I'm
+    # not sure if this is common among other players.
+    fourcc_is_valid=0
+    for fourcc in $DIVXHT_VALID_FOURCCS; do
+        if [ "$ID_VIDEO_FORMAT" == $fourcc ]; then
+            fourcc_is_valid=1
+            break
+        fi
+    done
+    if [ $fourcc_is_valid -eq 0 ]; then
+        echo "$PROGNAME: failure: \`$1' video fourcc \`$ID_VIDEO_FORMAT' is not one of: $DIVXHT_VALID_FOURCCS" >&2
         failed=1
     fi
 
@@ -278,8 +282,10 @@ divxht_test()
     fi
 
     # Confirm average video bitrate does not exceed 4Mbps
-    if [ $ID_VIDEO_BITRATE -gt 4000000 ]; then
-        echo "$PROGNAME: failure: \`$1' average video bitrate exceeds 4Mbps: ${ID_VIDEO_BITRATE}bps" >&2
+    if [ $ID_VIDEO_BITRATE -gt $DIVXHT_MAX_AVG_VBITRATE_BPS ]; then
+        bc_run_cmds "$ID_VIDEO_BITRATE * 0.000001"
+        bc_read_result vbitrate_mbps
+        echo "$PROGNAME: failure: \`$1' average video bitrate exceeds 4Mbps: ${vbitrate_mbps}Mbps" >&2
         failed=1
     fi
 
@@ -311,13 +317,16 @@ divxht_test()
     fi
 
     # Check if audio stream format is recognised
-    if [ $ID_AUDIO_FORMAT -ne $AUDF_MPEG1_LAYER_II \
-            -a $ID_AUDIO_FORMAT -ne $AUDF_MPEG1_LAYER_III \
-            -a $ID_AUDIO_FORMAT -ne $AUDF_DOLBY_AC3 ]; then
-        # Unrecognised audio format
-        echo "$PROGNAME: failure: audio stream in \`$1' is not supported by the DivX 5 Home Theatre profile:"\
-" $ID_AUDIO_FORMAT ($ID_AUDIO_CODEC) and must be re-encoded to MPEG-1 layer II/III or Dolby AC-3." >&2
-        failed=1
+    if [ -n "$ID_AUDIO_FORMAT" ]; then
+        if [ $ID_AUDIO_FORMAT -ne $AUDF_MPEG1_LAYER_II \
+                -a $ID_AUDIO_FORMAT -ne $AUDF_MPEG1_LAYER_III \
+                -a $ID_AUDIO_FORMAT -ne $AUDF_DOLBY_AC3 ]; then
+            # Unrecognised audio format
+            echo "$PROGNAME: failure: \`$1' audio stream format \`$ID_AUDIO_CODEC' ($ID_AUDIO_FORMAT)"\
+" is not supported by the DivX 5 Home Theatre profile"\
+" and must be re-encoded to MPEG-1 layer II/III or Dolby AC-3." >&2
+            failed=1
+        fi
     fi
 
     # Warn if aspect ratio is missing
@@ -331,7 +340,7 @@ divxht_test()
     # of the DivX 5 HT spec, and most hardware players (such as the
     # Panasonic NV-VP60) won't decode these extra B-frames, resulting in
     # jerky motion.
-    # 
+    #
     # MPlayer produces a warning message when they are encountered. The
     # only way we can detect these frames is to play back a brief
     # portion of the movie and monitor MPlayer's diagnostic output.
