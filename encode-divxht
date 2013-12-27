@@ -1564,10 +1564,19 @@ Use the \`-a' option to supply the proper aspect ratio manually."
         bc_run_cmds "$target_video_aspect * ($w / $ID_VIDEO_WIDTH) / ($h / $ID_VIDEO_HEIGHT)"
         bc_read_result target_video_aspect
     elif [ $PANSCAN -eq 1 ]; then
-        target_video_width=$(($ID_VIDEO_WIDTH * 3 / 4))
+        bc_run_cmds "i($ID_VIDEO_WIDTH * 3 / 4)" "i($ID_VIDEO_WIDTH / 8)"
+        bc_read_result target_video_width crop_x
+        if [ $EXPAND_ASPECT_720 -eq 1 -a $ID_VIDEO_WIDTH -eq 720 ]; then
+            # For the 720px -> aspect*=45/44 hack, use aspect=15:11 so that
+            # standard MPEG-4 PARs 12:11 (PAL 4:3) or 10:11 (NTSC 4:3) can be
+            # utilised, since we're assuming the 4:3 content embedded in the 16:9
+            # image is actually 540px wide rather than 528px.
+            target_video_aspect=1.3636
+        else
+            target_video_aspect=1.3333
+        fi
         target_video_height=$ID_VIDEO_HEIGHT
-        vfcrop_args="$vfcrop_args -vf-add crop=$(($ID_VIDEO_WIDTH * 3 / 4)):$ID_VIDEO_HEIGHT:$(($ID_VIDEO_WIDTH / 8)):0"
-        target_video_aspect=1.3333
+        vfcrop_args="$vfcrop_args -vf-add crop=$target_video_width:$target_video_height:$crop_x:0"
     else
         target_video_width=$ID_VIDEO_WIDTH
         target_video_height=$ID_VIDEO_HEIGHT
