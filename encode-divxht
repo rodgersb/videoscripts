@@ -20,8 +20,6 @@
 # this script:
 #   * MPlayer <http://mplayerhq.hu/>
 #   * A POSIX-compatible bc implementation (GNU bc is also good)
-#   * GNU coreutils <http://www.gnu.org/software/coreutils/>
-#       (for the `mkfifo' command needed to create named pipes)
 
 # Version of this script (use undocumented -V option to print version)
 VERSION=1.1.0
