@@ -140,7 +140,7 @@ print_notice()
 # printing descriptions (to avoid readability issues with too-wide paragraphs).
 MIN_SHORTOPT_COLS=10
 MAX_SHORTOPT_COLS=10
-MIN_LONGOPT_COLS=14
+MIN_LONGOPT_COLS=8
 MAX_LONGOPT_COLS=28
 MAX_DESC_COLS=80
 
@@ -235,7 +235,7 @@ print_help()
 
 fmt_help <<EOF
 #Usage: $PROGNAME [OPTION...] VIDEO-FILES...
-#   or: $PROGNAME [OPTION...] -o OUTPUT-FILE SOURCE-FILE
+#   or: $PROGNAME [OPTION...] -o OUTPUT-AVI-FILE INPUT-VIDEO-FILE
 #Converts video files to DivX Home Theatre profile AVI.
 
 #Input/output file options
@@ -256,30 +256,31 @@ fmt_help <<EOF
     Stop encoding <dur> seconds after start of encoding. May be given as
     \`mm:ss', \`hh:mm:ss' or an absolute number of seconds.
 
-#Source file decoding options
-#----------------------------
+#Input video file decoding options
+#----------------------------------
 -a, --aspect=x
     Override source material aspect ratio (if incorrect or missing). <x> must be
     in form \`w:h', \`w/h' or a positive real number.
 -F, --ffmpeg-decode
     Use FFmpeg to decode input files rather than MPlayer. Provides a workaround for
-    source files where MPlayer may decode incorrectly.
+    input files where MPlayer may decode incorrectly or crashes.
 -f, --fps=n
-    Assume this frame rate (fps) if source frame rate is unavailable. Default
-    assumed frame rate is ${DFL_FPS}fps. Must not exceed ${MAX_FPS_NTSC}fps.
+    Assume this frame rate (fps) for output if source frame rate is unavailable
+    or if the input file is variable frame rate. Default assumed frame rate is
+    ${DFL_FPS}fps. Must not exceed ${MAX_FPS_NTSC}fps.
 -Y, --noskip
     Use basic MEncoder A/V sync (eqv. "-noskip -mc 0") to suppress excessive
-    "Skipping frame" messages.  Should only be used on well- formed input
-    streams. Not to be used with variable frame-rate files.
+    "Skipping frame" messages.  Should only be used on well-formed input
+    streams. Should not be used with variable frame rate files.
 
 #Picture cropping/scaling options
 #--------------------------------
 -7, --crop-720-704
-    Crops left/right 8-pixel columns off 720px-wide PAL/NTSC DVD-Video or
-    DVB footage to create a 704px-wide picture as per ITU-R BT.601. This
-    hack eliminates a costly resample operation and allows a standard MPEG-4
-    Pixel Aspect Ratio (PAR) to be used, ensuring better DivX H/W player
-    compatibility. Ignored if the picture width is not 720px.
+    Crops left/rightmost 8-pixel columns off 720px-wide PAL/NTSC DVD-Video or
+    SD-DVB footage to create a 704px-wide picture as per ITU-R BT.601. This hack
+    eliminates a costly resample operation and allows a standard MPEG-4 Pixel
+    Aspect Ratio (PAR) to be used, ensuring better DivX H/W player
+    compatibility. No action taken if picture is not 720px wide.
 -C, --auto-crop
     Attempt to auto-detect size of black borders around edge of picture and crop
     them. Will take several minutes for large files.
@@ -287,11 +288,18 @@ fmt_help <<EOF
     Manually specify black border crop region. <w> is width, <h> is height and
     <x>, <y> is the top-left corner (all in pixels) of the region to be
     preserved. Corresponds to MPlayer "-vf crop".
+-E, --expand-aspect-720
+    Widens aspect ratio by 45/44 if picture is 720px wide (most DVD-Video or
+    SD-DVB footage) so a standard MPEG-4 Pixel Aspect Ratio can be used,
+    ensuring better DivX H/W player compatibility. 4:3 (1.33:1) aspect becomes
+    1.36:1, 16:9 (1.78:1) becomes 1.82:1. This is an alternative hack to the
+    \`-7' option, also avoids a costly resample operation but preserves the
+    left/rightmost 8px columns. No action taken if picture is not 720px wide.
 -H, --height=n
     Rescale picture height to no larger than <n> pixels. Maximum <n> is 576 for
     PAL (fps <= 25), 480 for NTSC (25 < fps <= 30).
 -p, --panscan
-    Crop sides of 16:9 source material for 4:3 centre extract. This option
+    Crop sides off 16:9 source material for 4:3 centre extract. This option
     implicitly assumes source material aspect ratio is 16:9.
 -Q, --square-pixels
     Rescale picture as needed so that square pixels are used. Needed for buggy
@@ -304,7 +312,7 @@ fmt_help <<EOF
 -S, --size=n
     Attempt to limit output file to <n> megabytes or less, automatically
     selecting a video bitrate to meet this budget. Maximum size is 2GiB
-    (${MAX_BUDGET_FILESIZE_NOODML_MB}MB).
+    (${MAX_BUDGET_FILESIZE_NOODML_MB}MB) unless OpenDML is enabled (\`-O').
 -b, --vbitrate=n
     Output video bitrate in kbps. Permitted maximum is ${MAX_VBITRATE_KBPS}kbps.
     By default, the source video bitrate is used.
@@ -312,7 +320,9 @@ fmt_help <<EOF
 #Video encoding options
 #----------------------
 -1, --single-pass
-    Single-pass encode only (two-pass encoding is default)
+    Single-pass encode only (two-pass encoding is default). Halves encoding time
+    but won't allocate more bits to scenes w/ complex motion, resulting in more
+    significantly degraded picture quality unless very high bitrates are used.
 -g, --greyscale
     Greyscale mode; use if source footage is B&W to reduce encoding time.
 -I, --interlaced
@@ -329,8 +339,8 @@ fmt_help <<EOF
 
 -k, --keyint=n
     Generate keyframes every <n> frames. Maximum permitted is $MAX_KEYINT.
-    Shorter keyframe intervals make the video more bit-error resilient at the
-    expense of lesser compression ratio. Default is $DFL_KEYINT.
+    Shorter keyframe intervals make the output file more bit-error resilient at
+    the expense of lesser compression ratio. Default is $DFL_KEYINT.
 -t, --turbo
     Turbo mode; trades off some output quality for faster encode.
 -X, --xvid
@@ -359,7 +369,7 @@ fmt_help <<EOF
 #Non-DivXHT-compliant options (*might* work on some H/W DivX players, but YMMV!)
 #-------------------------------------------------------------------------------
 -B, --bframes-interlaced
-    Allow encoding B-frames in interlaced (-I) mode. May improve compression
+    Allow encoding B-frames in interlaced (\`-I') mode. May improve compression
     slightly. Not officially supported in the DivX HT spec. Some H/W players
     will exhibit block-glitching, tearing or jerky motion artifacts if B-frames
     are used in interlaced mode.
@@ -373,11 +383,11 @@ fmt_help <<EOF
     <abr> is average bitrate used, in kbps. Requires MPlayer be built w/ libfaac
     support. Maximum permitted bitrate is ${MAX_AAC_BITRATE_KBPS}kbps.
 -j, --copy-aac
-    Do not re-encode source audio if it is MPEG-4 AAC; mux it into the output
-    file verbatim. See warning for \`-J' option above.
+    Do not re-encode source audio stream if it is MPEG-4 AAC; mux it into the
+    output file verbatim. See warning for \`-J' option above.
 -P, --custom-par
-    Allow custom pixel aspect ratios (PAR); can preserve more detail for
-    wider-aspect (e.g. 2.35+:1) content. By default, picture is rescaled if
+    Allow custom MPEG-4 Pixel Aspect Ratios (PAR); can preserve more detail for
+    wider-aspect (e.g. 2.35+:1) HD content. By default, picture is rescaled if
     needed to conform to a standard MPEG-4 PAR (1:1, 10:11, 40:33, 12:11 or
     16:11). DivX HT spec doesn't require custom PARs, but some H/W players
     support them anyway. H/W players w/o custom-PAR support will show custom-PAR
@@ -402,9 +412,10 @@ fmt_help <<EOF
 -n, --dry-run
     Dry-run mode: don't encode; only print commands that would be run.
 -T, --threads=n
-    Number of concurrent threads to use for encoding (1-8, default
-    ${DFL_NTHREADS}). Additional threads speed up encoding on multi-core systems
-    but may produce slightly lesser quality than single-threaded mode.
+    Number of concurrent threads to use for encoding (1-8,
+    default=${DFL_NTHREADS}).  Additional threads speed up encoding on
+    multi-core systems but may produce slightly lesser quality than
+    single-threaded mode.
 
 #Without \`-o', output files will have the same name as the input files,
 #with the extension \`.avi'. Should any source file already have extension
@@ -887,7 +898,7 @@ fi
 
 unset MANUAL_VBITRATE_KBPS BUDGET_FILESIZE_MB FORCED_ASPECT \
     DOWNSCALE_WIDTH DOWNSCALE_HEIGHT MANUAL_CROP \
-    AC3_BITRATE AAC_BITRATE OUTDIR
+    AC3_BITRATE AAC_BITRATE OUTDIR START_TS ENCODE_DUR
 SINGLE_PASS=0
 FORCE_REENCODE_AUDIO=0
 REENCODE_AUDIO_MP3=0
@@ -896,6 +907,7 @@ REENCODE_AUDIO_AAC=0
 ALLOW_AAC=0
 AUTO_CROP=0
 CROP_720_704=0
+EXPAND_ASPECT_720=0
 DELETE_INPUT_FILE=0
 FFMPEG_DECODE=0
 INTERLACED=0
@@ -961,11 +973,11 @@ define i(n) {
 }
 EOF
 
-SHORTOPTS='17A:a:Bb:Cc:Dd:e:Ff:GgHh:IJ:jk:L:M:N:nOo:PpQqS:s:tT:VvW:XxY'
+SHORTOPTS='17A:a:Bb:Cc:Dd:Ee:Ff:GgHh:IJ:jk:L:M:N:nOo:PpQqS:s:tT:VvW:XxY'
 LONGOPTS="delete-input-file,output-dir:,output-file:"\
 ",start:,duration:"\
 ",aspect:,ffmpeg-decode,fps:,noskip"\
-",crop-720-704,auto-crop,crop:,height:,panscan,square-pixels,width:"\
+",crop-720-704,expand-aspect-720,auto-crop,crop:,height:,panscan,square-pixels,width:"\
 ",size:,vbitrate:"\
 ",single-pass,greyscale,interlaced,keyint:,turbo,xvid"\
 ",acodec-mp3:,acodec-ac3:,reencode-audio"\
@@ -981,8 +993,8 @@ else
     for arg; do
         case $arg in
             --[A-Za-z0-9]*)
-                print_error "Long options are not available if GNU getopt(1) is not installed, sorry."\
-" Please use the short version of each option."
+                print_error "Long options are not available if GNU getopt(1) is not installed, sorry.
+Please use the short version of each option."
                 print_try_help
                 exit 1
             ;;
@@ -1064,21 +1076,22 @@ while [ "x$1" != 'x--' ]; do
         ;;
         -D | --delete-input-file) DELETE_INPUT_FILE=1;;
         -d | --output-dir)
-            if [ -e "$2" ]; then
-                if [ -d "$2" ]; then
-                    OUTDIR="$2"
-                else
-                    print_error "output directory \`$2' is not a directory"
-                    print_try_help
-                    exit 1
-                fi
-            else
+            if ! [ -e "$2" ]; then
                 print_error "output directory \`$2' does not exist"
                 print_try_help
                 exit 1
+            elif ! [ -d "$2" ]; then
+                print_error "output directory \`$2' is not a directory"
+                print_try_help
+                exit 1
+            elif ! [ -w "$2" ]; then
+                print_error "output directory \`$2' is not writable"
+                exit 1
             fi
+            OUTDIR="$2"
             shift
         ;;
+        -E | --expand-aspect-720) EXPAND_ASPECT_720=1;;
         -e | --duration)
             if ! ENCODE_DUR=`normalise_duration_arg "$2"`; then
                 print_error "encode duration length must be either in the format"\
@@ -1169,7 +1182,7 @@ while [ "x$1" != 'x--' ]; do
         -Q | --square-pixels) FORCE_SQUARE_PIXELS=1;;
         -q | --qpel) USE_QPEL=1;;
         -S | --size)
-            # 2GiB test is deferred until after option parsing, in case OpenDML is enabled
+            # 2GiB test is deferred until after option parsing, in case OpenDML is enabled.
             if ! is_positive_real_arg "$2"; then
                 print_error "file size budget must be a positive real number: $2"
                 print_try_help
@@ -1229,32 +1242,37 @@ elif [ -n "$OUTPUT_FILENAME" -a $# -gt 1 ]; then
     print_try_help
     exit 1
 elif [ -n "$BUDGET_FILESIZE_MB" -a -n "$MANUAL_VBITRATE_KBPS" ]; then
-    print_error "cannot use both -b (manual vbitrate)"\
-" and -S (filesize budget) options together"
+    print_error "cannot use both \`-b' (manual vbitrate)"\
+" and \`-S' (filesize budget) options together"
     print_try_help
     exit 1
 elif [ $AUTO_CROP -eq 1 -a -n "$MANUAL_CROP" ] \
         || [ $AUTO_CROP -eq 1 -a $PANSCAN -eq 1 ] \
         || [ -n "$MANUAL_CROP" -a $PANSCAN -eq 1 ]; then
-    print_error "cannot use both -c (manual crop), -C (auto crop)"\
-" and/or -p (pan & scan) options concurrently."
+    print_error "cannot use both \`-c' (manual crop), \`-C' (auto crop)"\
+" and/or \`-p' (pan & scan) options concurrently."
     print_try_help
     exit 1
 elif [ $REENCODE_AUDIO_MP3 -eq 1 -a $REENCODE_AUDIO_AC3 -eq 1 ] \
         || [ $REENCODE_AUDIO_MP3 -eq 1 -a $REENCODE_AUDIO_AAC -eq 1 ] \
         || [ $REENCODE_AUDIO_AC3 -eq 1 -a $REENCODE_AUDIO_AAC -eq 1 ]; then
     print_error "cannot use more than one of"\
-" -A (MP3 audio), -L (AC3 audio) or -J (AAC audio) options together. "
+" \`-A' (MP3 audio), \`-L' (AC3 audio) or \`-J' (AAC audio) options together. "
     print_try_help
     exit 1
 elif [ $INTERLACED -eq 1 -a $USE_QPEL -eq 1 ]; then
-    print_error "cannot use -q (qpel motion compensation) for interlaced video"
+    print_error "cannot use \`-q' (qpel motion compensation) for interlaced video (\`-I')"
     print_try_help
     exit 1
 elif [ -n "$BUDGET_FILESIZE_MB" -a $USE_OPENDML -eq 0 ] \
         && bc_run_test "$BUDGET_FILESIZE_MB > $MAX_BUDGET_FILESIZE_NOODML_MB"; then
     print_error "file size budget must not exceed"\
 " ${MAX_BUDGET_FILESIZE_NOODML_MB}MB if OpenDML is disabled: $BUDGET_FILESIZE_MB"
+    print_try_help
+    exit 1
+elif [ $CROP_720_704 -eq 1 -a $EXPAND_ASPECT_720 -eq 1 ]; then
+    print_error "cannot use both \`-7' (crop 720px to 704px) and"\
+" \`-E' (widen aspect 45/44 if 720px) options together"
     print_try_help
     exit 1
 fi
@@ -1450,7 +1468,7 @@ for infile; do
         fi
     elif [ -n "$ENCODE_DUR" ]; then
         if bc_run_test "$ENCODE_DUR > $ID_LENGTH"; then
-            print_warning "encode duration extends beyond end of file \`$infile'"\
+            print_warning "encode duration $ENCODE_DUR_RAW extends beyond end of file \`$infile'"\
 " (actual duration ${ID_LENGTH}s)"
             clipped_encode_dur=$ID_LENGTH
         else
@@ -1513,9 +1531,15 @@ for infile; do
         bc_read_result target_video_aspect
         print_warning "aspect ratio for file \`$infile' is missing.
 Assuming an aspect ratio of ${target_video_aspect}:1.
-This may or might not be what was intended."
+This may or might not be what was intended.
+Use the \`-a' option to supply the proper aspect ratio manually."
     else
         target_video_aspect=$ID_VIDEO_ASPECT
+    fi
+    # Implement 720px aspect widening hack if requested
+    if [ $EXPAND_ASPECT_720 -eq 1 -a $ID_WIDTH -eq 720 ]; then
+        bc_run_cmds "$target_video_aspect * 45/44"
+        bc_read_result target_video_aspect
     fi
 
     # Implement 720px->704px wide crop hack if requested. This crop is performed
