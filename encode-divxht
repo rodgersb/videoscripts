@@ -493,10 +493,7 @@ bc_start()
 # statements might produce can be read back through bc_read_result.
 bc_run_cmds()
 {
-    local arg
-    for arg; do
-        echo "$arg" >&4
-    done
+    printf '%s\n' "$@" >&4
 }
 
 # Sends a fragment of commands from standard input to the POSIX bc
@@ -821,9 +818,7 @@ lame_preset_to_kbps()
 # escaped individually and output on a separate line.
 escape_string()
 {
-    for arg; do
-        echo "$arg"
-    done | sed 's/\([^-[:alnum:]=_.:/+@,^]\)/\\\1/g'
+    printf '%s\n' "$@" | sed 's/\([^-[:alnum:]=_.:/+@,^]\)/\\\1/g'
 }
 
 # If dry-run mode is not enabled, then prints the command string given
@@ -840,7 +835,7 @@ trace_cmd()
 {
     local res
     if [ $DRY_RUN -eq 1 ]; then
-        echo "$1"
+        printf '%s\n' "$1"
         return 0
     fi
     eval "set -x; $1"
@@ -1001,12 +996,12 @@ Please use the short version of each option."
     if ! eval set -- `
             while getopts $SHORTOPTS opt; do
                 [ $opt = '?' ] && exit 1
-                echo '-'$opt
+                printf '%s\n' '-'$opt
                 [ x${OPTARG:+1} = x1 ] && escape_string "$OPTARG"
                 unset OPTARG
             done
             shift $(($OPTIND - 1))
-            echo '--'
+            printf '%s\n' '--'
             escape_string "$@"`; then
         print_try_help
         exit 1
@@ -1535,7 +1530,7 @@ Use the \`-a' option to supply the proper aspect ratio manually."
         target_video_aspect=$ID_VIDEO_ASPECT
     fi
     # Implement 720px aspect widening hack if requested
-    if [ $EXPAND_ASPECT_720 -eq 1 -a $ID_WIDTH -eq 720 ]; then
+    if [ $EXPAND_ASPECT_720 -eq 1 -a $ID_VIDEO_WIDTH -eq 720 ]; then
         bc_run_cmds "$target_video_aspect * 45/44"
         bc_read_result target_video_aspect
     fi
@@ -1563,7 +1558,7 @@ Use the \`-a' option to supply the proper aspect ratio manually."
         vfcrop_args="$vfcrop_args -vf-add crop=$auto_crop_result"
     elif [ -n "$MANUAL_CROP" ]; then
         vfcrop_args="$vfcrop_args -vf-add crop=$MANUAL_CROP"
-        eval `echo $MANUAL_CROP | sed 's/^\([0-9]\+\):\([0-9]\+\):\([0-9]\+\):\([0-9]\+\)$/w=\1 h=\2 x=\3 y=\4/'`
+        eval `printf '%s\n' $MANUAL_CROP | sed 's/^\([0-9]\+\):\([0-9]\+\):\([0-9]\+\):\([0-9]\+\)$/w=\1 h=\2 x=\3 y=\4/'`
         target_video_width=$w
         target_video_height=$h
         bc_run_cmds "$target_video_aspect * ($w / $ID_VIDEO_WIDTH) / ($h / $ID_VIDEO_HEIGHT)"
