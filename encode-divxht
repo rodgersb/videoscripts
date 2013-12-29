@@ -266,6 +266,13 @@ fmt_help <<EOF
     Assume this frame rate (fps) for output if source frame rate is unavailable
     or if the input file is variable frame rate. Default assumed frame rate is
     ${DFL_FPS}fps. Must not exceed ${MAX_FPS_NTSC}fps.
+
+    As a special case, if a frame rate of 50fps, 59.94fps or 60fps (or a
+    progressive-scan input file with this frame rate) is given, then each
+    consecutive pair of frames will be converted into odd/even fields of one
+    interlaced frame, and the effective framerate halved. This allows such
+    content to be played on a conventional PAL/NTSC TV set.
+
 -Y, --noskip
     Use basic MEncoder A/V sync (eqv. "-noskip -mc 0") to suppress excessive
     "Skipping frame" messages.  Should only be used on well-formed input
@@ -1098,7 +1105,21 @@ while [ "x$1" != 'x--' ]; do
         ;;
         -F | --ffmpeg-decode) FFMPEG_DECODE=1;;
         -f | --fps)
-            if ! is_positive_real_arg "$2" || bc_run_test "$2 > $MAX_FPS_NTSC"; then
+            valid=0
+            if is_positive_real_arg "$2"; then
+                if bc_run_test "$2 > $MAX_FPS_NTSC"; then
+                    for field_rate_spec in $FIELD_RATES; do
+                        field_rate=${field_rate_spec#*:}
+                        if bc_run_test "$field_rate == $2"; then
+                            valid=1
+                            break
+                        fi
+                    done
+                else
+                    valid=1
+                fi
+            fi
+            if [ $valid -eq 0 ]; then
                 print_error "default frame rate must be a positive real number not exceeding $MAX_FPS_NTSC: $2"
                 print_try_help
                 exit 1
@@ -1828,7 +1849,7 @@ EOF
             n = 1
             d = 1
             l = a(p - 1)
-            for(i = 255; i >= 2; i--) {
+            for(i = 255; i >= 1; i--) {
                 j = i(i / p)
                 e = a(p - i / j)
                 if(e <= l) {
