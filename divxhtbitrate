@@ -21,15 +21,13 @@
 # this script:
 #   * MPlayer <http://mplayerhq.hu/>
 #   * A POSIX-compatible bc implementation (GNU bc is also good)
-#   * GNU coreutils <http://www.gnu.org/software/coreutils/>
-#       (for the `mkfifo' command needed to create named pipes)
 
 # Name of this script, used for displaying error messages.
 PROGNAME="${0##*/}"
 # Maximum video bitrate that DivX 5 HT profile will support (kbps)
-MAX_VBITRATE=4000
+MAX_VBITRATE_KBPS=4000
 # Minimum video bitrate that MPlayer will accept in its arguments (kbps)
-MIN_VBITRATE=4
+MIN_VBITRATE_KBPS=4
 # Default audio average bitrate or LAME profile
 DFL_AUDIO_PRESET=standard
 # Approximation of the size of a DivX 5 AVI file header. Typically the
@@ -41,9 +39,8 @@ DFL_OVERHEAD_FIXED_KBYTES=6
 # DivX AVI file.
 DFL_OVERHEAD_KBITPS=5.5
 
-# List of LAME audio presets and upper-bound bitrates
-LAME_PRESET_NAMES="medium standard extreme insane"
-LAME_PRESET_BITRATES="180 210 240 320"
+# List of LAME audio presets and upper-bound bitrates, separated by colons.
+LAME_PRESETS="medium:180 standard:210 extreme:240 insane:320"
 
 # List of MPlayer audio format codes for the ID_AUDIO_FORMAT variable
 # returned by `mplayer -identify'.
@@ -51,18 +48,87 @@ AUDF_MPEG1_LAYER_II=80      # MPEG-1 Layer II
 AUDF_MPEG1_LAYER_III=85     # MPEG-1 Layer III
 AUDF_DOLBY_AC3=8192         # Dolby AC-3
 
-unset DURATIONS_ON_CMD_LINE \
-    GLOBAL_AUDIO_BITRATE \
-    OVERHEAD_KBITPS \
-    OVERHEAD_FIXED_KBYTES \
-    RESERVE_KBITPS \
-    RESERVE_FIXED_KBYTES \
-    VERBOSE
+# Two gibibytes given as a quantity in megabytes
+TWO_GIBIBYTES_MB=2147.483647
 
 # When testing under the GNU system this is needed to help ensure that
 # this script will work under more strict POSIX-compliant systems (e.g.
 # commercial UNIXes).
 export POSIXLY_CORRECT=1
+
+# Almquist shell doesn't expand \n in strings, so this is a workaround.
+LF="
+"
+
+print_help()
+{
+    cat <<EOF
+Usage: $PROGNAME [OPTION...] STORAGE-BUDGET SOURCE-VIDEO-FILES...
+   or: $PROGNAME [OPTION...] -t -A AUDIO-BITRATE STORAGE-BUDGET DURATIONS...
+Video bitrate calculator for transcoding files to DivX5 Home Theatre profile.
+
+  -2        Shortcut for \`-S ${TWO_GIBIBYTES_MB}'; useful when storing streams in
+            non-OpenDML AVI containers to enforce the 2GiB limit.
+  -A abr    Specify average audio bitrate for all files (in kbps). If
+            the source audio is not MPEG-1 Layer II/III or Dolby AC-3,
+            then transcoding the audio stream would be needed and this
+            option specifies the intended average bitrate. The LAME
+            encoder presets \`medium' (180kbps), \`standard' (210kbps),
+            \`extreme' (240kbps), \`insane' (320kbps) are also recognised.
+            Default preset is: ${DFL_AUDIO_PRESET}
+  -S n      Per-file size limit given in megabytes, when using a container
+            format that imposes an upper limit on file size. If this limit is
+            exceeded, then the calculations will abort with an error message. By
+            default no per-file limit is imposed.
+  -O n      AVI per-file header overhead in kilobytes. Default is ${DFL_OVERHEAD_FIXED_KBYTES}.
+  -o n      AVI per-second indexing/muxing overhead, in kbps. Default is ${DFL_OVERHEAD_KBITPS}.
+  -R n      Reserve additional fixed overhead of <n> kilobytes for each file.
+            Useful for when extra metadata is to be embedded (e.g. subtitles).
+  -r n      Reserve additional <n> kilobits per second overhead for each
+            file. Useful for factoring in extra audio tracks, for example.
+  -t        Allows durations to be specified explicitly in lieu of
+            source file names. DURATIONS must be given in the form
+            \`hh:mm:ss', \`mm:ss' or an absolute number of seconds.
+  -v        Verbose mode (useful for diagnostics)
+
+STORAGE-BUDGET is the amount of storage (given in megabytes) that the
+output video files must need to fit within. The following
+case-sensitive keywords can also be given as shortcuts for common
+media types:
+
+    bluray      A single-layer Blu-ray disc (25GB)
+    bluraydl    A dual-layer Blu-ray disc (50GB)
+    dvd         A single-layer DVD-R/+R disc (4.7GB)
+    dvddl       A dual-layer DVD-R/+R disc (8.5GB)
+    cd          An 80min CD-R disc (700MB)
+
+The program output will be an integer that represents the suggested
+video bitrate (in kilobits per second) that should be used when
+transcoding the files to DivX 5 Home Theatre profile, in order to fill
+up the given storage budget.
+
+EOF
+}
+
+print_try_help()
+{
+    echo "Try \`$PROGNAME -h' for more information." >&2
+}
+
+print_error()
+{
+    echo -e "$PROGNAME: error: $1" >&2
+}
+
+print_warning()
+{
+    echo -e "$PROGNAME: warning: $1" >&2
+}
+
+print_notice()
+{
+    echo -e "$PROGNAME: notice: $1" >&2
+}
 
 # $1 = video file name
 # Returns zero exit status if success; non-zero if failure.
@@ -110,68 +176,19 @@ mplayer_identify()
 {
     unset ID_EXIT
     if ! [ -e "$1" ]; then
-        echo "$PROGNAME: error: cannot find file \`$1'" >&2
+        print_error "cannot find file \`$1'"
         return 1
     elif ! [ -f "$1" ]; then
-        echo "$PROGNAME: error: \`$1' is not a file" >&2
+        print_error "\`$1' is not a file"
         return 1
     fi
     # Note: the aspect ratio does not become available until we play at least 1 frame
     eval `mplayer -noconfig all -cache-min 0 -identify -really-quiet -vo null -ao null -frames 1 "$1" 2>/dev/null \
         | sed '/^\w\+=/!d; s/\([^-[:alnum:]=_.:/+@,^]\)/\\\\\1/g'`
     if [ "$ID_EXIT" != EOF ]; then
-        echo "$PROGNAME: error: unable to retrieve information for file \`$1'" >&2
+        print_error "unable to retrieve information for file \`$1'"
         return 1
     fi
-}
-
-print_help()
-{
-    cat <<EOF
-Usage: $PROGNAME [OPTION...] STORAGE-BUDGET SOURCE-VIDEO-FILES...
-   or: $PROGNAME [OPTION...] -t -A AUDIO-BITRATE STORAGE-BUDGET DURATIONS...
-Video bitrate calculator for transcoding files to DivX5 Home Theatre profile.
-
-  -A abr    Specify average audio bitrate for all files (in kbps). If
-            the source audio is not MPEG-1 Layer II/III or Dolby AC-3,
-            then transcoding the audio stream would be needed and this
-            option specifies the intended average bitrate. The LAME
-            encoder presets \`medium' (180kbps), \`standard' (210kbps),
-            \`extreme' (240kbps), \`insane' (320kbps) are also recognised.
-            Default preset is: ${DFL_AUDIO_PRESET}
-  -O n      AVI per-file header overhead in kilobytes. Default is ${DFL_OVERHEAD_FIXED_KBYTES}.
-  -o n      AVI per-second indexing/muxing overhead, in kbps. Default is ${DFL_OVERHEAD_KBITPS}.
-  -R n      Reserve additional fixed overhead of <n> kilobytes for each file.
-            Useful for when extra metadata is to be embedded (e.g. subtitles).
-  -r n      Reserve additional <n> kilobits per second overhead for each
-            file. Useful for factoring in extra audio tracks, for example.
-  -t        Allows durations to be specified explicitly in lieu of
-            source file names. DURATIONS must be given in the form
-            \`hh:mm:ss', \`mm:ss' or an absolute number of seconds.
-  -v        Verbose mode (useful for diagnostics)
-
-STORAGE-BUDGET is the amount of storage (given in megabytes) that the
-output video files must need to fit within. The following
-case-sensitive keywords can also be given as shortcuts for common
-media types:
-
-    bluray      A single-layer Blu-ray disc (25GB)
-    bluraydl    A dual-layer Blu-ray disc (50GB)
-    dvd         A single-layer DVD-R/+R disc (4.7GB)
-    dvddl       A dual-layer DVD-R/+R disc (8.5GB)
-    cd          An 80min CD-R disc (700MB)
-
-The program output will be an integer that represents the suggested
-video bitrate (in kilobits per second) that should be used when
-transcoding the files to DivX 5 Home Theatre profile, in order to fill
-up the given storage budget.
-
-EOF
-}
-
-print_try_help()
-{
-    echo "Try \`$PROGNAME -h' for more information." >&2
 }
 
 assert_have_program()
@@ -179,7 +196,7 @@ assert_have_program()
     local prog
     for prog in $*; do
         if ! which $prog >/dev/null 2>&1; then
-            echo "$PROGNAME: error: program \`$prog' is needed in the system path to run this script." >&2
+            print_error "program \`$prog' is needed in the system path to run this script."
             exit 1
         fi
     done
@@ -201,21 +218,21 @@ BC_PID=
 bc_start()
 {
     if ! BC_STMT_PIPE=`mktemp $MKTEMP_TEMPLATE`; then
-        echo "$PROGNAME: error: unable to create temporary file \`$MKTEMP_TEMPLATE'" >&2
+        print_error "unable to create temporary file \`$MKTEMP_TEMPLATE'"
         exit 1
     elif ! BC_RSLT_PIPE=`mktemp $MKTEMP_TEMPLATE`; then
-        echo "$PROGNAME: error: unable to create temporary file \`$MKTEMP_TEMPLATE'" >&2
+        print_error "unable to create temporary file \`$MKTEMP_TEMPLATE'"
         exit 1
     fi
     rm -f $BC_STMT_PIPE $BC_RSLT_PIPE
     if ! mkfifo -m600 $BC_STMT_PIPE $BC_RSLT_PIPE; then
-        echo "$PROGNAME: error: unable to create temporary named pipes" >&2
+        print_error "unable to create temporary named pipes"
         exit 1
     fi
     bc -q <$BC_STMT_PIPE >$BC_RSLT_PIPE &
     BC_PID=$!
     if ! exec 4>$BC_STMT_PIPE 5<$BC_RSLT_PIPE; then
-        echo "$PROGNAME: error: unable to communicate with \`bc' child process" >&2
+        print_error "unable to communicate with \`bc' child process"
         exit 1
     fi
     rm -f $BC_STMT_PIPE $BC_RSLT_PIPE
@@ -226,10 +243,14 @@ bc_start()
 # statements might produce can be read back through bc_read_result.
 bc_run_cmds()
 {
-    local arg
-    for arg; do
-        echo "$arg" >&4
-    done
+    printf '%s\n' "$@" >&4
+}
+
+# Sends a fragment of commands from standard input to the POSIX bc
+# co-process. This function is intended to be used with a here-document.
+bc_run_heredoc()
+{
+    cat >&4
 }
 
 # Reads back one or more lines of output from the POSIX bc co-process.
@@ -253,7 +274,7 @@ bc_read_result()
 bc_run_test()
 {
     local res;
-    echo -e "if($1) { \"true\"; }; \"\n\""  >&4
+    echo -e "if($1) { \"true\"; }; \"${LF}\""  >&4
     read res <&5
     [ "$res" = true ] && return 0;
     return 1;
@@ -266,11 +287,42 @@ bc_end()
     wait $BC_PID
 }
 
+# Determines if the first argument is a valid positive integer.
+# Returns exit code 0 if valid; exit code 1 otherwise.
+is_positive_int_arg()
+{
+    if [ `expr match "$1" '[0-9]\+$'` -gt 0 ] && [ $1 -gt 0 ]; then
+        return 0;
+    fi
+    return 1
+}
+
+# Determines if the first argument is a valid non-negative integer.
+# Returns exit code 0 if valid; exit code 1 otherwise.
+is_non_negative_int_arg()
+{
+    if [ `expr match "$1" '[0-9]\+$'` -gt 0 ]; then
+        return 0
+    fi
+    return 1
+}
+
+
 # Determines if the first argument is a valid non-negative real number.
 # Returns exit code 0 if valid; exit code 1 otherwise.
 is_non_negative_real_arg()
 {
     if [ `expr match "$1" '[0-9]*\.\?[0-9]\+$'` -gt 0 ]; then
+        return 0
+    fi
+    return 1
+}
+
+# Determines if the first argument is a valid positive real number.
+# Returns exit code 0 if valid; exit code 1 otherwise.
+is_positive_real_arg()
+{
+    if [ `expr match "$1" '[0-9]*\.\?[0-9]\+$'` -gt 0 ] && bc_run_test "$1 > 0"; then
         return 0
     fi
     return 1
@@ -291,24 +343,26 @@ is_duration_arg()
     return 1
 }
 
-# Normalises a duration expression (given as the first argument) to an
-# absolute number of seconds. This function will write the output as an
-# expression that can be fed to POSIX bc. It will be bracketed as
-# necessary. It is presumed that the expression has already been
+# Normalises a duration expression (given as the first argument) to an absolute
+# number of seconds. It is presumed that the expression has already been
 # validated via the `is_duration_arg' function.
 normalise_duration_arg()
 {
-    local hr min sec
+    local hr min sec abssec
     if [ `expr match "$1" '[0-9]\+:[0-9]\+:[0-9]\+\.\?[0-9]*$'` -gt 0 ]; then
         hr=${1%%:*}
         min=${1%:*}
         min=${min#*:}
         sec=${1##*:}
-        echo "(${hr}*3600+${min}*60+${sec})"
+        bc_run_cmds "${hr}*3600+${min}*60+${sec}"
+        bc_read_result abssec
+        echo $abssec
     elif [ `expr match "$1" '[0-9]\+:[0-9]\+\.\?[0-9]*$'` -gt 0 ]; then
         min=${1%%:*}
         sec=${1##*:}
-        echo "(${min}*60+${sec})"
+        bc_run_cmds "${min}*60+${sec}"
+        bc_read_result abssec
+        echo $abssec
     elif [ `expr match "$1" '[0-9]*\.\?[0-9]\+$'` -gt 0 ]; then
         echo "$1"
     fi
@@ -324,8 +378,9 @@ is_audio_bitrate()
     if [ `expr match "$1" '[0-9]*\.\?[0-9]\+$'` -gt 0 ]; then
         return 0
     fi
-    for preset in $LAME_PRESET_NAMES; do
-        if [ "$1" = $preset ]; then
+    for preset in $LAME_PRESETS; do
+        preset_name=${preset%:*}
+        if [ "$1" = $preset_name ]; then
             return 0
         fi
     done
@@ -341,21 +396,20 @@ is_audio_bitrate()
 # corresponds to "no audio track".
 lame_preset_to_kbps()
 {
-    local arg preset
-    arg="$1"
-    if [ `expr match "$arg" '[0-9]*\.\?[0-9]\+$'` -gt 0 ]; then
-        echo "$arg"
-        return 0
+    local preset preset_name preset_kbps
+    if is_non_negative_int_arg "$1"; then
+         echo $1
+         return 0
     fi
-    set -- $LAME_PRESET_BITRATES
-    for preset in $LAME_PRESET_NAMES; do
-        if [ "$arg" = $preset ]; then
-            echo $1
+    for preset in $LAME_PRESETS; do
+        preset_name=${preset%:*}
+        preset_kbps=${preset#*:}
+        if [ "$1" = $preset_name ]; then
+            echo $preset_kbps
             return 0
         fi
-        shift
     done
-    return 0
+    return 1
 }
 
 # Looks up the first argument as a media type, and prints to standard
@@ -399,7 +453,9 @@ media_preset_to_mb()
 # Use this bitrate if the audio stream for the current file is
 # incompatible with the DivX 5 Home Theatre spec and no global audio
 # bitrate is given.
-DFL_AUDIO_BITRATE=`lame_preset_to_kbps $DFL_AUDIO_PRESET`
+DFL_AUDIO_BITRATE_KBPS=`lame_preset_to_kbps $DFL_AUDIO_PRESET`
+
+unset GLOBAL_AUDIO_BITRATE_KBPS MAX_FILE_SIZE_MB
 
 OVERHEAD_FIXED_KBYTES=$DFL_OVERHEAD_FIXED_KBYTES
 OVERHEAD_KBITPS=$DFL_OVERHEAD_KBITPS
@@ -412,7 +468,7 @@ DURATIONS_ON_CMD_LINE=0
 # that we can avoid having to start up the bc co-process that would just
 # go unused in that case. The rest of the command-line arguments
 # processing may need it.
-if [ "$1" == "-h" ]; then
+if [ "$1" = "-h" ]; then
     print_help
     exit 0
 fi
@@ -420,68 +476,73 @@ fi
 assert_have_program bc mplayer mkfifo
 bc_start
 
-while getopts "A:O:o:R:r:thv" opt; do
+while getopts "2A:L:O:o:R:r:thv" opt; do
     case $opt in
-        'A')
+        2) MAX_FILE_SIZE_MB=$TWO_GIBIBYTES_MB;;
+        A)
             if is_audio_bitrate "$OPTARG"; then
-                GLOBAL_AUDIO_BITRATE=`lame_preset_to_kbps $OPTARG`
+                GLOBAL_AUDIO_BITRATE_KBPS=`lame_preset_to_kbps $OPTARG`
             else
-                echo "$PROGNAME: error: audio bitrate must be a non-negative real number (kbps) or a LAME preset: $OPTARG" >&2
+                print_error "audio bitrate must be a non-negative real number (kbps) or a LAME preset: $OPTARG"
                 print_try_help
                 exit 1
             fi
         ;;
-        'O')
-            if is_non_negative_real_arg "$OPTARG"; then
-                OVERHEAD_FIXED_KBYTES=$OPTARG
-            else
-                echo "$PROGNAME: error: argument to \`-O' must be a non-negative real number: $OPTARG" >&2
+        L)
+            if ! is_positive_real_arg "$OPTARG"; then
+                print_error "file size limit must be a positive real number in megabytes: $OPTARG"
                 print_try_help
                 exit 1
             fi
+            MAX_FILE_SIZE_MB=$OPTARG
         ;;
-        'o')
-            if is_non_negative_real_arg "$OPTARG"; then
+        O)
+            if ! is_non_negative_real_arg "$OPTARG"; then
+                print_error "argument to \`-O' must be a non-negative real number: $OPTARG"
+                print_try_help
+                exit 1
+            fi
+            OVERHEAD_FIXED_KBYTES=$OPTARG
+        ;;
+        o)
+            if ! is_non_negative_real_arg "$OPTARG"; then
+                print_error "argument to \`-o' must be a non-negative real number: $OPTARG"
+                print_try_help
+                exit 1
+            fi
                 OVERHEAD_KBITPS=$OPTARG
-            else
-                echo "$PROGNAME: error: argument to \`-o' must be a non-negative real number: $OPTARG" >&2
+        ;;
+        R)
+            if ! is_non_negative_real_arg "$OPTARG"; then
+                print_error "argument to \`-R' must be a non-negative real number: $OPTARG"
                 print_try_help
                 exit 1
             fi
+            RESERVE_FIXED_KBYTES=$OPTARG
         ;;
-        'R')
-            if is_non_negative_real_arg "$OPTARG"; then
-                RESERVE_FIXED_KBYTES=$OPTARG
-            else
-                echo "$PROGNAME: error: argument to \`-R' must be a non-negative real number: $OPTARG" >&2
+        r)
+            if ! is_non_negative_real_arg "$OPTARG"; then
+                print_error "argument to \`-r' must be a non-negative real number: $OPTARG"
                 print_try_help
                 exit 1
             fi
+            RESERVE_KBITPS=$OPTARG
         ;;
-        'r')
-            if is_non_negative_real_arg "$OPTARG"; then
-                RESERVE_KBITPS=$OPTARG
-            else
-                echo "$PROGNAME: error: argument to \`-r' must be a non-negative real number: $OPTARG" >&2
-                print_try_help
-                exit 1
-            fi
-        ;;
-        't') DURATIONS_ON_CMD_LINE=1;;
-        'h') print_help; exit 0;;
-        'v') VERBOSE=1;;
-        '?') print_try_help; exit 1;;
+        t) DURATIONS_ON_CMD_LINE=1;;
+        h) print_help; exit 0;;
+        v) VERBOSE=1;;
+        \?) print_try_help; exit 1;;
     esac
 done
 shift $(($OPTIND-1))
 
 # $1 is now the storage budget (in megabytes) or a media preset
 if [ $# -lt 1 ]; then
-    echo "$PROGNAME: error: the storage budget must be specified" >&2
+    print_error "the storage budget must be specified"
     print_try_help
     exit 1
 elif ! STORAGE_BUDGET_MB=`media_preset_to_mb "$1"`; then
-    echo "$PROGNAME: error: storage budget must be given as a positive real number (in megabytes) or a pre-set keyword: $1" >&2
+    print_error "storage budget must be given as a positive real number (in megabytes) or a pre-set keyword: $1"
     print_try_help
     exit 1
 fi
@@ -492,11 +553,11 @@ shift
 # $DURATIONS_ON_CMD_LINE is 1.
 if [ $# -lt 1 ]; then
     if [ $DURATIONS_ON_CMD_LINE -eq 1 ]; then
-        echo "$PROGNAME: error: file durations must be specified after storage budget" >&2
+        print_error "file durations must be specified after storage budget"
         print_try_help
         exit 1
     else
-        echo "$PROGNAME: error: source files must be specified after storage budget" >&2
+        print_error "source files must be specified after storage budget"
         print_try_help
         exit 1
     fi
@@ -505,7 +566,7 @@ fi
 if [ $DURATIONS_ON_CMD_LINE -eq 1 ]; then
     for dur; do
         if ! is_duration_arg "$dur"; then
-            echo "$PROGNAME: error: durations must be in the form \`hh:mm:ss', \`mm:ss' or an absolute number of seconds: $dur" >&2
+            print_error "durations must be in the form \`hh:mm:ss', \`mm:ss' or an absolute number of seconds: $dur"
             print_try_help
             exit 1
         fi
@@ -513,13 +574,13 @@ if [ $DURATIONS_ON_CMD_LINE -eq 1 ]; then
 else
     for file; do
         if [ ! -e "$file" ]; then
-            echo "$PROGNAME: error: file not found: $file" >&2
+            print_error "file not found: $file"
             exit 1
         elif [ -d "$file" ]; then
-            echo "$PROGNAME: error: filename refers to a directory: $file" >&2
+            print_error "filename refers to a directory: $file"
             exit 1
         elif [ ! -r "$file" ]; then
-            echo "$PROGNAME: error: file is not readable: $file" >&2
+            print_error "file is not readable: $file"
             exit 1
         fi
     done
@@ -536,7 +597,13 @@ fi
 #   w   Temporary: overhead bits for current file
 #   x   Temporary: reserved bits for current file
 #   y   Temporary: audio bits for current file
-bc_run_cmds t=0 "s = ${STORAGE_BUDGET_MB} * 8000000" a=0 o=0 r=0
+bc_run_heredoc <<EOF
+    t = 0
+    s = ${STORAGE_BUDGET_MB} * 8000000
+    a = 0
+    o = 0
+    r = 0
+EOF
 if [ $VERBOSE -eq 1 ]; then
     bc_run_cmds s
     bc_read_result storage_bits
@@ -545,28 +612,28 @@ fi
 
 if [ $DURATIONS_ON_CMD_LINE -eq 1 ]; then
     for dur; do
-        norm_dur_exp=`normalise_duration_arg $dur`
+        norm_dur=`normalise_duration_arg $dur`
         bc_run_cmds \
-            "w = ${OVERHEAD_FIXED_KBYTES} * 8000 + ${OVERHEAD_KBITPS} * 1000 * ${norm_dur_exp}" \
-            "x = ${RESERVE_FIXED_KBYTES} * 8000 + ${RESERVE_KBITPS} * 1000 * ${norm_dur_exp}" \
-            "y = ${GLOBAL_AUDIO_BITRATE:-$DFL_AUDIO_BITRATE} * 1000 * ${norm_dur_exp}"
+            "w = ${OVERHEAD_FIXED_KBYTES} * 8000 + ${OVERHEAD_KBITPS} * 1000 * ${norm_dur}" \
+            "x = ${RESERVE_FIXED_KBYTES} * 8000 + ${RESERVE_KBITPS} * 1000 * ${norm_dur}" \
+            "y = ${GLOBAL_AUDIO_BITRATE_KBPS:-$DFL_AUDIO_BITRATE_KBPS} * 1000 * ${norm_dur}"
         if [ $VERBOSE -eq 1 ]; then
-            bc_run_cmds "$norm_dur_exp" w x y
-            bc_read_result norm_dur overhead_bits reserved_bits audio_bits
+            bc_run_cmds w x y
+            bc_read_result overhead_bits reserved_bits audio_bits
             echo "duration: $dur" \
                 "norm_dur=$norm_dur" \
                 "overhead_bits=$overhead_bits" \
                 "reserved_bits=$reserved_bits" \
                 "audio_bits=$audio_bits"
         fi
-        bc_run_cmds t+=${norm_dur_exp} o+=w r+=x a+=y
+        bc_run_cmds t+=${norm_dur} o+=w r+=x a+=y
     done
 else
     for file; do
         mplayer_identify "$file"
         if bc_run_test "${ID_LENGTH} == 0"; then
-            echo "$PROGNAME: error: MPlayer is unable to determine playback duration of file \`$file'."\
-" Use the \`-t' option and specify the duration explicitly as a work-around." >&2
+            print_error "MPlayer is unable to determine playback duration of file \`$file'.
+Use the \`-t' option and specify the duration explicitly as a work-around."
             bc_end
             exit 1
         fi
@@ -578,7 +645,7 @@ else
                 -o $ID_AUDIO_FORMAT = $AUDF_DOLBY_AC3 ]; then
             bc_run_cmds "y = ${ID_AUDIO_BITRATE} * ${ID_LENGTH}"
         else
-            bc_run_cmds "y = ${GLOBAL_AUDIO_BITRATE:-$DFL_AUDIO_BITRATE} * 1000 * ${ID_LENGTH}"
+            bc_run_cmds "y = ${GLOBAL_AUDIO_BITRATE_KBPS:-$DFL_AUDIO_BITRATE_KBPS} * 1000 * ${ID_LENGTH}"
         fi
         if [ $VERBOSE -eq 1 ]; then
             bc_run_cmds w x y
@@ -607,25 +674,86 @@ if [ $VERBOSE -eq 1 ]; then
 fi
 
 if bc_run_test "t == 0"; then
-    echo "$PROGNAME: error: total duration is zero seconds, cannot compute a bitrate for this." >&2
+    print_error "total duration is zero seconds, cannot compute a bitrate for this."
     bc_end
     exit 1
 fi
 
 bc_run_cmds "b = (s - o - r - a) / t / 1000" \
-    "if(b > $MAX_VBITRATE) { b = $MAX_VBITRATE; }"
+    "if(b > $MAX_VBITRATE_KBPS) { b = $MAX_VBITRATE_KBPS; }"
 
-if bc_run_test "b < $MIN_VBITRATE"; then
+if bc_run_test "b < $MIN_VBITRATE_KBPS"; then
     bc_run_cmds t
     bc_read_result total_duration
     echo "$PROGNAME: failure: can't fit ${total_duration}s of video"\
-" into ${STORAGE_BUDGET_MB}MB of storage given audio/overhead/reserved bitrate constraints." >&2
+" into ${STORAGE_BUDGET_MB}MB of storage given audio/overhead/reserved bitrate constraints."
     bc_end
     exit 1
 fi
 
 bc_run_cmds b
 bc_read_result vbitrate_kbps
+
+# Run the file size limit check (if needed) now that we know the uniform video bitrate
+# List of POSIX bc session variables:
+#   t   Duration of current file (in seconds)
+#   f   File size limit, in bits. Equal to storage capacity if no file size limit given.
+#   c   Fixed overhead for each file, given in bits.
+#   v   Proposed video bitrate in bps
+#   a   Audio bitrate for current file in bps
+#   r   Reserved bitrate in bps
+#   o   Per-second container muxing overhead in bps
+#   s   Computed size of the current file, in bits
+if [ -n "$MAX_FILE_SIZE_MB" ]; then
+    bc_run_cmds \
+        "f = ${MAX_FILE_SIZE_MB} * 8000000" \
+        "c = (${OVERHEAD_FIXED_KBYTES} + ${RESERVE_FIXED_KBYTES}) * 8000" \
+        "v = ${vbitrate_kbps} * 1000" \
+        "r = ${RESERVE_KBITPS}" \
+        "o = ${OVERHEAD_KBITPS}"
+    if [ $DURATIONS_ON_CMD_LINE -eq 1 ]; then
+        bc_run_cmds "a = ${GLOBAL_AUDIO_BITRATE_KBPS:-$DFL_AUDIO_BITRATE_KBPS} * 1000"
+        for dur; do
+            norm_dur=`normalise_duration_arg $dur`
+            bc_run_cmds t=$norm_dur \
+                "s = c + t * (v + a + r + o)"
+            if bc_run_test "s > f"; then
+                bc_run_cmds "s * 0.000008"
+                bc_read_result proj_mb
+                print_error "Computed average video bitrate ${vbitrate_kbps}kbps"\
+" for total storage capacity ${STORAGE_BUDGET_MB}MB would"\
+" cause a file with duration ${norm_dur}s to exceed file size limit of ${MAX_FILE_SIZE_MB}MB.
+    (projected file size: ${proj_mb}MB)
+To remedy this, either reduce the overall storage budget or cut this file into smaller pieces."
+                exit 1
+            fi
+        done
+    else
+        for file; do
+            mplayer_identify "$file"
+            bc_run_cmds t=$ID_LENGTH
+            if [ $ID_AUDIO_FORMAT = $AUDF_MPEG1_LAYER_II \
+                    -o $ID_AUDIO_FORMAT = $AUDF_MPEG1_LAYER_III \
+                    -o $ID_AUDIO_FORMAT = $AUDF_DOLBY_AC3 ]; then
+                bc_run_cmds "a = ${ID_AUDIO_BITRATE}"
+            else
+                bc_run_cmds "a = ${GLOBAL_AUDIO_BITRATE_KBPS:-$DFL_AUDIO_BITRATE_KBPS} * 1000"
+            fi
+            bc_run_cmds "s = c + t * (v + a + r + o)"
+            if bc_run_test "s > f"; then
+                bc_run_cmds "s * 0.000008"
+                bc_read_result proj_mb
+                print_error "Computed average video bitrate ${vbitrate_kbps}kbps"\
+" for total storage capacity ${STORAGE_BUDGET_MB}MB would"\
+" cause file \`$file' to exceed file size limit of ${MAX_FILE_SIZE_MB}MB.
+    (projected file size: ${proj_mb}MB)
+To remedy this, either reduce the overall storage budget or cut this file into smaller pieces."
+                exit 1
+            fi
+        done
+    fi
+fi
+
 echo $vbitrate_kbps
 
 bc_end
