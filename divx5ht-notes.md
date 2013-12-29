@@ -6,9 +6,8 @@ playback of DivX 5 video files produced by MPlayer on the standalone
 Panasonic NV-VP60 DVD/VHS combo player (rel. circa-2006).
 
 I suspect the NV-VP60 likely conforms to the DivX 5 Home Theatre
-profile. There is no explicit mention of this anywhere in the NV-VP60's
-documentation. I'm using the PAL DVD region 4 (Australia/New Zealand)
-version - feature set may differ if you are elsewhere.
+profile. 
+<http://www.divx.com/files/DivX-Profiles_Tech-Specs.pdf>
 
 Note that the NV-VP60 manual states the player also supports MPEG-4
 Advanced Simple Profile video files (in an `.asf` container), however
