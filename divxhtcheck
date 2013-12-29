@@ -31,6 +31,8 @@ PROGNAME="${0##*/}"
 AUDF_MPEG1_LAYER_II=80      # MPEG-1 Layer II
 AUDF_MPEG1_LAYER_III=85     # MPEG-1 Layer III
 AUDF_DOLBY_AC3=8192         # Dolby AC-3
+AUDF_MPEG4_AAC=MP4A         # MPEG-4 AAC
+
 # Codec string MPlayer uses to identify DIVX v3 video streams
 VIDCODEC_DIVX3=ffdivx
 # Codec string MPlayer uses to identify DIVX v5 video streams
@@ -39,6 +41,12 @@ VIDCODEC_DIVX5=ffodivx
 DIVXHT_MAX_AVG_VBITRATE_BPS=4000000
 # Valid AVI FourCC codes accepted by DivX HT hardware players (separated by whitespace)
 DIVXHT_VALID_FOURCCS="DX50 DIVX XVID DIV3"
+# Standard Pixel Aspect Ratios (PARs) specified by MPEG-4. Each ratio is given
+# as numerator & denominator separated by a colon.
+MPEG4_STD_PARS="1:1 10:11 40:33 12:11 16:11"
+# Tolerance used when calculating PARs (percentage). Assume that the viewer
+# won't notice any distortions less than this factor.
+PAR_TOL=0.02
 
 # Warning message fragment that MPlayer produces if it plays a DivX
 # video stream with non-standard bi-directional predictive frames (i.e.
@@ -51,11 +59,83 @@ MPLAYER_WARN_BFRAMES_TEXT="Invalid and inefficient vfw-avi packed B frames detec
 # commercial UNIXes).
 export POSIXLY_CORRECT=1
 
+# Almquist shell doesn't expand \n in strings, so this is a workaround.
+LF="
+"
+
+print_failure()
+{
+    echo -e "$PROGNAME: failure: $1" >&2
+}
+
+print_error()
+{
+    echo -e "$PROGNAME: error: $1" >&2
+}
+
+print_warning()
+{
+    echo -e "$PROGNAME: warning: $1" >&2
+}
+
+print_notice()
+{
+    echo -e "$PROGNAME: notice: $1" >&2
+}
+
 print_help()
 {
     cat <<EOF
-Usage: $PROGNAME AVIFILE...
+Usage: $PROGNAME [OPTION...] AVIFILE...
 Checks a list of AVI files for DivX Home Theatre compliance.
+
+  -a    Suppress warnings about use of MPEG-4 Advanced Audio Coding (AAC) format
+        for audio streams. The DivX Home Theatre spec states that MPEG-4 AAC
+        support is *optional*, and many hardware DivX players lack AAC support.
+
+  -l    Disable checks on length of filenames. Use this option if you do *not*
+        intend to place the files on an ISO 9660 filesystem (e.g. CD/DVD-ROM
+        media) to be played on a stand-alone H/W DivX player.
+
+        Many H/W DivX players normally only read the Joliet FS metadata on ISO
+        9660 discs; the Joliet extensions impose a 64-character limit on
+        filename lengths. Many CD/DVD burner programs often silently truncate
+        filenames (including the trailing extension) that are too long for the
+        Joliet entries, but leave the Rock Ridge names intact (which do not have
+        this limitation). This can render such video files becoming unplayable
+        on H/W players (often they will not show up in the playlist menu).
+
+  -p    Suppress warnings about custom MPEG-4 Pixel Aspect Ratios (PAR).
+
+        The DivX Home Theatre spec normally requires DivX video files to use a
+        predefined MPEG-4 PAR of either 1:1 (square pixels), 10:11 (4:3 NTSC),
+        40:33 (16:9 NTSC), 12:11 (4:3 PAL) or 16:11 (16:9 PAL), however some
+        stand-alone hardware DivX players (e.g. Panasonic NV-VP60) will
+        unofficially allow any arbitrary PAR to be used and will scale the
+        picture correctly on-the-fly.
+
+        H/W DivX players that don't support custom PARs will usually display
+        DivX video files utilising a custom PAR at the wrong aspect ratio
+        (picture appears squished or stretched). Sometimes you can mitigate the
+        problem by changing aspect ratio settings on your player or TV.
+
+  -Q    Enables warnings if the input file video does not use square pixels. Use
+        this option if you have a buggy hardware DivX standalone player that
+        completely ignores the MPEG-4 aspect ratio field.
+
+NOTE: This script needs the MPlayer program, available at <http://mplayerhq.hu/>
+for querying video files. Due to limitations in MPlayer's \`-identify' output,
+this script is unable to warn if the instantaneous bitrate or macroblock rate is
+exceeded at any point in the video stream (DivX5 HT limits are 4854kbps and
+40500 blocks/sec respectively). Most H/W players will exhibit stuttered
+playback, screen corruption or premature end of playback should this happen.
+
+For more details on the DivX Home Theatre profile, you can read the following
+document at <http://www.divx.com/files/DivX-Profiles_Tech-Specs.pdf>.
+
+Exit status is zero if all files specified are DivX Home Theatre compliant, or
+non-zero if one or more files are not. Warning messages printed will indicate
+which characteristics of the input files are non-compliant.
 EOF
 }
 
@@ -69,7 +149,7 @@ assert_have_program()
     local prog
     for prog in $*; do
         if ! which $prog >/dev/null 2>&1; then
-            echo "$PROGNAME: error: program \`$prog' is needed in the system path to run this script." >&2
+            print_error "program \`$prog' is needed in the system path to run this script." >&2
             exit 1
         fi
     done
@@ -125,17 +205,17 @@ mplayer_identify()
         ID_AUDIO_BITRATE ID_AUDIO_RATE ID_AUDIO_NCH ID_AUDIO_CODEC \
         ID_LENGTH ID_EXIT
     if ! [ -e "$1" ]; then
-        echo "$PROGNAME: error: file \`$1' does not exist" >&2
+        print_error "file \`$1' does not exist"
         return 1
     elif ! [ -f "$1" ]; then
-        echo "$PROGNAME: error: \`$1' is not a regular file" >&2
+        print_error "\`$1' is not a regular file"
         return 1
     fi
     # Note: the aspect ratio does not become available until we play at least 1 frame
     eval `mplayer -noconfig all -cache-min 0 -identify -really-quiet -vo null -ao null -frames 1 "$1" 2>/dev/null \
         | sed '/^\w\+=/!d; s/\([^-[:alnum:]=_.:/+@,^]\)/\\\\\1/g'`
     if [ "$ID_EXIT" != EOF ]; then
-        echo "$PROGNAME: error: MPlayer was unable to retrieve information for file \`$1'" >&2
+        print_error "MPlayer was unable to retrieve information for file \`$1'"
         return 1
     fi
 }
@@ -156,21 +236,21 @@ BC_PID=
 bc_start()
 {
     if ! BC_STMT_PIPE=`mktemp $MKTEMP_TEMPLATE`; then
-        echo "$PROGNAME: error: unable to create temporary file \`$MKTEMP_TEMPLATE'" >&2
+        print_error "unable to create temporary file \`$MKTEMP_TEMPLATE'"
         exit 1
     elif ! BC_RSLT_PIPE=`mktemp $MKTEMP_TEMPLATE`; then
-        echo "$PROGNAME: error: unable to create temporary file \`$MKTEMP_TEMPLATE'" >&2
+        print_error "unable to create temporary file \`$MKTEMP_TEMPLATE'"
         exit 1
     fi
     rm -f $BC_STMT_PIPE $BC_RSLT_PIPE
     if ! mkfifo -m600 $BC_STMT_PIPE $BC_RSLT_PIPE; then
-        echo "$PROGNAME: error: unable to create temporary named pipes" >&2
+        print_error "unable to create temporary named pipes"
         exit 1
     fi
     bc -q <$BC_STMT_PIPE >$BC_RSLT_PIPE &
     BC_PID=$!
     if ! exec 4>$BC_STMT_PIPE 5<$BC_RSLT_PIPE; then
-        echo "$PROGNAME: error: unable to communicate with \`bc' child process" >&2
+        print_error "unable to communicate with \`bc' child process"
         exit 1
     fi
     rm -f $BC_STMT_PIPE $BC_RSLT_PIPE
@@ -181,10 +261,14 @@ bc_start()
 # statements might produce can be read back through bc_read_result.
 bc_run_cmds()
 {
-    local arg
-    for arg; do
-        echo "$arg" >&4
-    done
+    printf '%s\n' "$@" >&4
+}
+
+# Sends a fragment of commands from standard input to the POSIX bc
+# co-process. This function is intended to be used with a here-document.
+bc_run_heredoc()
+{
+    cat >&4
 }
 
 # Reads back one or more lines of output from the POSIX bc co-process.
@@ -208,7 +292,7 @@ bc_read_result()
 bc_run_test()
 {
     local res;
-    echo -e "if($1) { \"true\"; }; \"\n\""  >&4
+    echo -e "if($1) { \"true\"; }; \"${LF}\""  >&4
     read res <&5
     [ "$res" = true ] && return 0;
     return 1;
@@ -227,12 +311,14 @@ bc_end()
 # Messages will be printed to standard error explaining any failures.
 divxht_test()
 {
-    local failed fourcc fourcc_is_valid vbitrate_mbps file_size
+    local failed fourcc fourcc_is_valid vbitrate_mbps file_size audio_is_valid \
+        actual_par_width actual_par_height actual_par par_spec par_height par_width \
+        found_std_par std_par_error
     failed=0
 
     # Confirm AVI file extension
     if [ `expr match "$1" '.*\.[Aa][Vv][Ii]$'` -eq 0 ]; then
-        echo "$PROGNAME: failure: \`$1' does not have file extension \`.avi'" >&2
+        print_failure "\`$1' does not have file extension \`.avi'"
         return 1
     fi
 
@@ -243,9 +329,9 @@ divxht_test()
     # OSes will not use the Rock-Ridge extensions. The file name will
     # usually appear truncated on these systems. The Panasonic NV-VP60
     # will omit such files from the playlist menu.
-    if [ `expr length "${1##*/}"` -gt 64 ]; then
-        echo "$PROGNAME: failure: \`$1' file name is longer than 64 characters"\
-" and may not be recognised properly on a Joliet ISO 9660 file system." >&2
+    if [ $ALLOW_LONG_FILENAMES -eq 0 -a `expr length "${1##*/}"` -gt 64 ]; then
+        print_failure "\`$1' file name is longer than 64 characters"\
+" and may not be recognised properly on a Joliet ISO 9660 file system."
         return 1
     fi
 
@@ -254,9 +340,15 @@ divxht_test()
         return 1
     fi
 
+    # Confirm file has a video stream
+    if [ -z "$ID_VIDEO_FORMAT" ]; then
+        print_failure "\`$1' does not contain a video stream"
+        return 1
+    fi
+
     # Confirm AVI container
     if [ "$ID_DEMUXER" != avi ]; then
-        echo "$PROGNAME: failure: \`$1' is not in AVI container format: $ID_DEMUXER" >&2
+        print_failure "\`$1' is not in AVI container format: $ID_DEMUXER"
         failed=1
     fi
 
@@ -265,19 +357,19 @@ divxht_test()
     # not sure if this is common among other players.
     fourcc_is_valid=0
     for fourcc in $DIVXHT_VALID_FOURCCS; do
-        if [ "$ID_VIDEO_FORMAT" == $fourcc ]; then
+        if [ "$ID_VIDEO_FORMAT" = $fourcc ]; then
             fourcc_is_valid=1
             break
         fi
     done
     if [ $fourcc_is_valid -eq 0 ]; then
-        echo "$PROGNAME: failure: \`$1' video fourcc \`$ID_VIDEO_FORMAT' is not one of: $DIVXHT_VALID_FOURCCS" >&2
+        print_failure "\`$1' video fourcc \`$ID_VIDEO_FORMAT' is not one of: $DIVXHT_VALID_FOURCCS"
         failed=1
     fi
 
     # Confirm video stream is DivX 3/5
     if [ "$ID_VIDEO_CODEC" != $VIDCODEC_DIVX5 -a "$ID_VIDEO_CODEC" != $VIDCODEC_DIVX3 ]; then
-        echo "$PROGNAME: failure: \`$1' video stream is not DivX format: $ID_VIDEO_CODEC" >&2
+        print_failure "\`$1' video stream is not DivX format: $ID_VIDEO_CODEC"
         failed=1
     fi
 
@@ -285,19 +377,19 @@ divxht_test()
     if [ $ID_VIDEO_BITRATE -gt $DIVXHT_MAX_AVG_VBITRATE_BPS ]; then
         bc_run_cmds "$ID_VIDEO_BITRATE * 0.000001"
         bc_read_result vbitrate_mbps
-        echo "$PROGNAME: failure: \`$1' average video bitrate exceeds 4Mbps: ${vbitrate_mbps}Mbps" >&2
+        print_failure "\`$1' average video bitrate exceeds 4Mbps: ${vbitrate_mbps}Mbps"
         failed=1
     fi
 
     # Confirm video pixel width does not exceed 720
     if [ $ID_VIDEO_WIDTH -gt 720 ]; then
-        echo "$PROGNAME: failure: \`$1' video pixel width exceeds 720: $ID_VIDEO_WIDTH" >&2
+        print_failure "\`$1' video pixel width exceeds 720: $ID_VIDEO_WIDTH"
         failed=1
     fi
 
     # Confirm frame rate does not exceed 30fps
     if bc_run_test "$ID_VIDEO_FPS > 30"; then
-        echo "$PROGNAME: failure: \`$1' frame rate exceeds 30fps: $ID_VIDEO_FPS" >&2
+        print_failure "\`$1' frame rate exceeds 30fps: $ID_VIDEO_FPS"
         failed=1
     fi
 
@@ -305,34 +397,100 @@ divxht_test()
     if bc_run_test "$ID_VIDEO_FPS > 25"; then
         # Must not exceed 480 if 25 < fps <= 30 (NTSC)
         if [ $ID_VIDEO_HEIGHT -gt 480 ]; then
-            echo "$PROGNAME: failure: \`$1' video pixel height exceeds 480 for NTSC mode: $ID_VIDEO_HEIGHT" >&2
+            print_failure "\`$1' video pixel height exceeds 480 for NTSC mode: $ID_VIDEO_HEIGHT"
             failed=1
         fi
     else
         # Must not exceed 576 if fps <= 25 (PAL)
         if [ $ID_VIDEO_HEIGHT -gt 576 ]; then
-            echo "$PROGNAME: failure: \`$1' video pixel height exceeds 576 for PAL mode: $ID_VIDEO_HEIGHT" >&2
+            print_failure "\`$1' video pixel height exceeds 576 for PAL mode: $ID_VIDEO_HEIGHT"
             failed=1
         fi
     fi
 
     # Check if audio stream format is recognised
     if [ -n "$ID_AUDIO_FORMAT" ]; then
-        if [ $ID_AUDIO_FORMAT -ne $AUDF_MPEG1_LAYER_II \
-                -a $ID_AUDIO_FORMAT -ne $AUDF_MPEG1_LAYER_III \
-                -a $ID_AUDIO_FORMAT -ne $AUDF_DOLBY_AC3 ]; then
+        audio_is_valid=0
+        if [ $ID_AUDIO_FORMAT -eq $AUDF_MPEG1_LAYER_II \
+                -o $ID_AUDIO_FORMAT -eq $AUDF_MPEG1_LAYER_III \
+                -o $ID_AUDIO_FORMAT -eq $AUDF_DOLBY_AC3 ]; then
+            audio_is_valid=1
+        elif [ $ALLOW_AAC -eq 1 -a $ID_AUDIO_FORMAT -eq $AUDF_MPEG4_AAC ]; then
+            audio_is_valid=1
+        fi
+        if [ $audio_is_valid -eq 0 ]; then
             # Unrecognised audio format
-            echo "$PROGNAME: failure: \`$1' audio stream format \`$ID_AUDIO_CODEC' ($ID_AUDIO_FORMAT)"\
+            print_failure "\`$1' audio stream format \`$ID_AUDIO_CODEC' ($ID_AUDIO_FORMAT)"\
 " is not supported by the DivX 5 Home Theatre profile"\
-" and must be re-encoded to MPEG-1 layer II/III or Dolby AC-3." >&2
+" and must be re-encoded to MPEG-1 layer II/III or Dolby AC-3."
             failed=1
         fi
     fi
 
-    # Warn if aspect ratio is missing
+    # Warn if aspect ratio is missing.
+    # Can't do the MPEG-4 std. PAR test if aspect is undefined.
     if bc_run_test "$ID_VIDEO_ASPECT == 0"; then
-        echo "$PROGNAME: warning: \`$1' does not have a video aspect ratio specified."\
-" Most DivX-HT hardware players will assume square pixels, which might not be what was intended." >&2
+        print_warning "\`$1' does not have a picture aspect ratio specified.
+Most DivX-HT hardware players will assume square pixels, which might not be what was intended."
+    elif [ $ALLOW_CUSTOM_PAR -eq 0 ]; then
+        # Determine the custom PAR from MPlayer's -identify output; it needs to
+        # be inferred from the picture pixel dimensions and the aspect ratio,
+        # since MPlayer doesn't report the PAR itself. We need to express the
+        # PAR as a rational number, with the numerator and denominator not
+        # exceeding 255.
+        #
+        # POSIX bc variables for this fragment:
+        #   p   Pixel aspect ratio (as a real number)
+        #   i   Proposed numerator during loop
+        #   j   Proposed denomiator during loop
+        #   n   Best numerator found so far
+        #   d   Best denominator found so far
+        #   e   Error between i/j and a
+        #   l   Least error found so far
+        #
+        # NOTE: scale must be at least 4 for this fragment to work properly
+        # It also requires the a() and i() functions defined above
+        bc_run_heredoc <<EOF
+            p = $ID_VIDEO_ASPECT / ($ID_VIDEO_WIDTH / $ID_VIDEO_HEIGHT)
+            n = 1
+            d = 1
+            l = a(p - 1)
+            for(i = 255; i >= 1; i--) {
+                j = i(i / p)
+                e = a(p - i / j)
+                if(e <= l) {
+                    n = i
+                    d = j
+                    l = e
+                }
+            }
+            n
+            d
+            n / d
+EOF
+        bc_read_result actual_par_width actual_par_height actual_par
+        found_std_par=0
+        for par_spec in $MPEG4_STD_PARS; do
+            par_width=${par_spec%:*}
+            par_height=${par_spec#*:}
+            bc_run_cmds "a(($par_width / $par_height) / ($actual_par_width / $actual_par_height) - 1)"
+            bc_read_result std_par_error
+            if [ $par_width -eq $actual_par_width -a $par_height -eq $actual_par_height ] \
+                    || bc_run_test "$std_par_error < $PAR_TOL"; then
+                found_std_par=1
+                break
+            fi
+        done
+        if [ $REQUIRE_SQUARE_PAR -eq 1 -a $actual_par_width -ne 1 -a $actual_par_height -ne 1 ]; then
+            print_failure "\`$1' video stream does not have square pixels, and \`-Q' option was used."
+            failed=1
+        elif [ $found_std_par -eq 0 ]; then
+            print_failure "\`$1' appears to use a custom MPEG-4 Pixel Aspect Ratio (PAR) of $actual_par_width:$actual_par_height ($actual_par).
+The DivX HT standard normally requires standard MPEG-4 PARs ($MPEG4_STD_PARS) to be used.
+This file is likely to play back at the wrong aspect on H/W DivX standalone players.
+    (display aspect ratio: $ID_VIDEO_ASPECT, pixel array size: ${ID_VIDEO_WIDTH}x${ID_VIDEO_HEIGHT})"
+            failed=1
+        fi
     fi
 
     # Check if DivX MPEG-4 stream contains multiple consecutive
@@ -346,7 +504,7 @@ divxht_test()
     # portion of the movie and monitor MPlayer's diagnostic output.
     if mplayer -vo null -ao null -frames 1 -benchmark -quiet "$1" 2>&1 \
         | grep -q "$MPLAYER_WARN_BFRAMES_TEXT"; then
-        echo "$PROGNAME: failure: \`$1' contains multiple consecutive B-type frames and must be re-encoded" >&2
+        print_failure "\`$1' contains multiple consecutive B-type frames and must be re-encoded"
         failed=1
     fi
 
@@ -365,7 +523,7 @@ divxht_test()
         # FIXME: A better approach would be to decode the AVI structure and
         # look for multiple RIFF chunks? May be difficult in Bourne Shell.
         if dd if="$1" bs=8192 count=1 2>/dev/null | strings -a -T binary | grep -q odmldmlh; then
-            echo "$PROGNAME: failure: \`$1' exceeds 1GB and contains an OpenDML index" >&2
+            print_failure "\`$1' exceeds 1GB and contains an OpenDML index"
             failed=1
         fi
     fi
@@ -373,16 +531,71 @@ divxht_test()
     return $failed
 }
 
-while getopts "h" opt; do
+REQUIRE_SQUARE_PAR=0
+ALLOW_CUSTOM_PAR=0
+ALLOW_LONG_FILENAMES=0
+ALLOW_AAC=0
+
+while getopts "alpQh" opt; do
     case $opt in
+        'a') ALLOW_AAC=1;;
+        'l') ALLOW_LONG_FILENAMES=1;;
+        'p') ALLOW_CUSTOM_PAR=1;;
+        'Q') REQUIRE_SQUARE_PAR=1;;
         'h') print_help; exit 0;;
         '?') print_try_help; exit 1;;
     esac
 done
 shift $(($OPTIND-1))
 
+if [ $ALLOW_CUSTOM_PAR -eq 1 -a $REQUIRE_SQUARE_PAR -eq 1 ]; then
+    print_error "Cannot use the \`-Q' (require square pixels) and \`-p' (allow custom PARs) options together."
+    print_try_help
+    exit 1
+fi
+
 assert_have_program bc mplayer mkfifo
 bc_start
+
+# POSIX bc functions declared:
+#   a(n): Returns the absolute value of <n>.
+#   i(n): Rounds <n> to the nearest integer and returns it without any
+#         decimal places. In the event of the fractional part being
+#         `.5', <n> will be rounded to the nearest even integer.
+bc_run_heredoc <<EOF
+scale=4
+define a(n) {
+    if(n < 0) return(-n)
+    return(n)
+}
+define i(n) {
+    auto f, s, r
+    if(scale(n) == 0) return(n)
+    s = scale
+    scale = 0
+    f = n % 1
+    if(f > 0.5) {
+        r = (n - f + 1) / 1
+        scale = s
+        return(r)
+    }
+    if(f < -0.5) {
+        r = (n + f) / 1
+        scale = s
+        return(r)
+    }
+    if(a(f) == 0.5) {
+        if(a(n % 2) > 1) {
+            r = (n + f) / 1
+            scale = s
+            return(r)
+        }
+    }
+    r = (n - f) / 1
+    scale = s
+    return(r)
+}
+EOF
 
 exit_status=0
 for file; do
