@@ -529,7 +529,7 @@ won't show that area to the viewer).
 
 The MPEG-4 file format normally encodes the aspect ratio of the picture in a
 video stream by giving the PAR instead of the DAR, whereas MPEG-2 instead has a
-few predefined DARs (1:1, 4:3, 16:9, 2.21:1).
+few predefined DARs (1:1, 4:3, 16:9, 2.21:1) enumerated in a header field.
 
 MPEG-4 offers 5 pre-defined PARs:
 
@@ -544,8 +544,8 @@ that only the above PARs should be used. Some DivX-capable DVD players
 unofficially  support custom PARs properly, while others don't (they'll display
 the picture at the wrong aspect - stretched or squished).
 
-The reason for this constraint is that the MPEG-4 standard (like its
-predecessors MPEG-1/2) are designed to be implemented in hardware as well as
+The reason for this constraint is that the MPEG-4 standard as with its
+predecessors MPEG-1/2 are designed to be implemented in hardware as well as
 software, and need to be reasonably simple in design.
 
 In a hardware DVD player, the video stream's PAR is directly linked to the clock
