@@ -587,7 +587,7 @@ width. This is the `-7` option in `encode-divxht`.
 
 3. Alternatively you can slightly expand the DAR of the video by multiplying it
 by 45/44 (~1.02) to then satisfy the DAR=SAR*PAR equation above. This keeps the
-full 720px width of the image intact. This is the `-E' option in
+full 720px width of the image intact. This is the `-E` option in
 `encode-divxht`.
 
 Solutions #2 and #3 above will avoid the resampling operation, so they will
