@@ -5,11 +5,11 @@ This directory contains a collection of shell scripts that perform useful
 video encoding tasks. I'm releasing the scripts under the GPL in case
 anyone else finds them useful.
 
-Please note that these scripts, although they have endured hundreds of
-hours of use by myself and should be reasonably well tested, they come
-with **absolutely no warranty**, **merchantability** or **fitness for a
-particular purpose**. I will not be held responsible for any loss or
-damage that these scripts may cause. Please use them at your own risk.
+Please note that these scripts, although they have endured hundreds of hours of
+use by myself and should be reasonably well tested and robust, they come with
+**absolutely no warranty**, **merchantability** or **fitness for a particular
+purpose**. I will not be held responsible for any loss or damage that these
+scripts may cause. Please use them at your own risk.
 
 For each of these scripts, you will need [MPlayer](http://www.mplayerhq.hu/)
 installed on your system, and compiled with at least DivX 5 support through its
