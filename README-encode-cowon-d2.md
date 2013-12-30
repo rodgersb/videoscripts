@@ -345,19 +345,19 @@ If you're cut for time and willing to trade off quality, or more disk space to
 maintain a similar level of quality, then consider looking at the following
 options:
 
-  -1, --single-pass
+    -1, --single-pass
         Single-pass encode only (two-pass encoding is default). Halves
         encoding time but won't allocate more bits to scenes w/ complex motion,
         resulting in more significantly degraded picture quality unless very
         high bitrates are used.
 
-  -t, --turbo
+    -t, --turbo
         Turbo mode; trades off some output quality for faster encode.
 
-  -T, --threads=n
+    -T, --threads=n
         Number of concurrent threads to use for encoding (1-8, default=1).
         Additional threads speed up encoding on multi-core systems but may
         produce slightly lesser quality than single-threaded mode.
 
-  -g, --greyscale
+    -g, --greyscale
         Greyscale mode; use if source footage is B&W to reduce encoding time.
