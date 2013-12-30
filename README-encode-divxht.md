@@ -392,7 +392,7 @@ files you're getting are not what you expected, or there's problems with them
 for what you were trying to achieve.
 
 If the commands executed are wrong, then feel free to e-mail me a bug report at
-<rodgersb at it dot net dot au> and mention the following:
+[rodgersb at it dot net dot au] and mention the following:
 
     * Operating system/distribution version and system hardware specs
     * MPlayer and FFmpeg versions installed
