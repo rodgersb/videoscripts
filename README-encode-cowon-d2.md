@@ -314,9 +314,9 @@ given.
 
 The script will print the `mencoder` commands as it runs them. If the output
 files you're getting are not what you expected, or there's problems with them
-(e.g. A/V desync), then first confer with the MPlayer documentation if the
-`mencoder` commands that this script chose to ran are appropriate and relevant
-for what you were trying to achieve.
+(e.g. A/V desync), then first please confer with the MPlayer documentation if
+the `mencoder` commands that this script chose to ran are appropriate and
+relevant for what you were trying to achieve.
 
 If the commands executed are wrong, then feel free to e-mail me a bug report at
 [rodgersb at it dot net dot au] and mention the following:
