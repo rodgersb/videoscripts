@@ -549,10 +549,10 @@ predecessors MPEG-1 & MPEG-2 are designed to be implemented in hardware as well
 as software, and need to be reasonably simple in design.
 
 In a hardware DVD player, the video stream's PAR is directly linked to the clock
-rate of the output video DAC used to generate the TV signal. TV encoder chipsets
-used in hardware DVD players vary wildy in design, however quite often for cost
-reasons low-end chipsets typically only support limited clock rates (allowing
-for simpler circuitry).
+rate of the output video DAC used to generate the TV signal. TV signal encoder
+chipsets used in hardware DVD players vary wildy in design, however quite often
+for cost reasons low-end chipsets typically only support limited clock rates
+allowing for simpler circuitry.
 
 A DVD-Video player video chipset DAC technically only needs to support a small
 handful of clock rates, as the resolutions and DARs of DVD-Video content are
