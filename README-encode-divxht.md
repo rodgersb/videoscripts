@@ -442,25 +442,49 @@ If you're cut for time and willing to trade off quality, or more disk space to
 maintain a similar level of quality, then consider looking at the following
 options:
 
-    -1, --single-pass
-        Single-pass encode only (two-pass encoding is default). Halves
-        encoding time but won't allocate more bits to scenes w/ complex motion,
-        resulting in more significantly degraded picture quality unless very
-        high bitrates are used.
+  * -1, --single-pass: Single-pass encode only (two-pass encoding is default). Halves
+    encoding time but won't allocate more bits to scenes w/ complex motion,
+    resulting in more significantly degraded picture quality unless very high
+    bitrates are used.
 
-    -t, --turbo
-        Turbo mode; trades off some output quality for faster encode.
+  * -t, --turbo: Turbo mode; trades off some output quality for faster encode.
 
-    -T, --threads=n
-        Number of concurrent threads to use for encoding (1-8, default=1).
-        Additional threads speed up encoding on multi-core systems but may
-        produce slightly lesser quality than single-threaded mode.
+  * -T, --threads=n: Number of concurrent threads to use for encoding (1-8, default=1).
+    Additional threads speed up encoding on multi-core systems but may produce
+    slightly lesser quality than single-threaded mode.
 
-    -g, --greyscale
-        Greyscale mode; use if source footage is B&W to reduce encoding time.
+  * -g, --greyscale: Greyscale mode; use if source footage is B&W to reduce
+    encoding time further.
 
-If you're technically inclined, you can also read the next section if you're
-re-encoding DVD-Video or DVB-T/S/C streams.
+
+What's with the non-DivX-HT compliant options?
+----------------------------------------------
+
+Some hardware DivX players unofficially support additional MPEG-4 features that
+are not specified in the DivX Home Theatre specification. 
+
+For example, during testing I discovered the Panasonic NV-VP60 will support any
+custom PAR (see `-P` option and discussion in section below) which gives much
+greater flexibility in choice of picture resolution, and allows better
+preservation of detail in footage with very wide aspect ratios (say, 2.35:1 or
+wider).
+
+If you have a high definition (Blu-ray or HD-DVD) player that supports one of
+the DivX HD profiles, then chances are you'll probably find your player will
+support most of these options.
+
+If you want to take advantage of these features, I recommend that you first use
+this script to encode some short test files (you can always use the `-e` option
+to extract, say a 1-minute chunk out of a much larger file), burn them to
+rewritable (i.e. CD-RW/DVD-RW) optical media and test if they play back
+correctly on your H/W player.
+
+The `-h` help text above explains what the consequences are for using each
+option.
+
+If you don't use any options at all from the non-DivXHT-compliant section, then
+by default this script will always create a DivX-HT compliant AVI file that will
+play correctly on all H/W DivX players.
 
 
 What's the deal with the 720px and 704px horizontal resolutions?
