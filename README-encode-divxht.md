@@ -545,8 +545,8 @@ unofficially  support custom PARs properly, while others don't (they'll display
 the picture at the wrong aspect - stretched or squished).
 
 The reason for this constraint is that the MPEG-4 standard as with its
-predecessors MPEG-1/2 are designed to be implemented in hardware as well as
-software, and need to be reasonably simple in design.
+predecessors MPEG-1 & MPEG-2 are designed to be implemented in hardware as well
+as software, and need to be reasonably simple in design.
 
 In a hardware DVD player, the video stream's PAR is directly linked to the clock
 rate of the output video DAC used to generate the TV signal. TV encoder chipsets
