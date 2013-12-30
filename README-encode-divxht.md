@@ -498,10 +498,17 @@ The DivX file format is based on the MPEG-4 standard (there are a few minor
 differences in DivX from other MPEG-4 based video formats like H.264, such as
 limited or no support for Global Motion Compensation, etc).
 
+Unlike still images in computer graphics, where pixels are normally considered
+square, in digital video terminology, pixels are usually *not* square. The
+reason for this is to do with sampling an analogue signal at an optimal sampling
+rate (based on the bandwidth of the signal), and integrating digital video
+equipment (editing workstations, storage, capture and transmission systems) with
+existing older analogue equipment.
+
 When describing the aspect ratio of a video, there are three important ratios:
 
  * SAR: Storage Aspect Ratio (pixel array width:pixel array height)
- * PAR: Pixel Aspect Ratio (pixel width:pixel height)
+ * PAR: Pixel Aspect Ratio (projected pixel width:projected pixel height)
  * DAR: Display Aspect Ratio (projected picture width:projected picture height)
 
 There's a relationship between these ratios. If you know two of them, you can
@@ -511,20 +518,14 @@ solve for the third one:
  * PAR = DAR / SAR
  * SAR = DAR / PAR
 
-Unlike still images in computer graphics, where pixels are normally considered
-square, in digital video terminology, pixels are usually *not* square. The
-reason for this is to do with sampling an analogue signal at an optimal sampling
-rate, and integrating digital video equipment (editing workstations, storage
-systems) with existing older analogue equipment.
-
-ITU-R BT.601 (a television engineering standard) defined an industry standard
-sampling rate of 13.5MHz for digital TV equipment that dealt with standard
-definition TV content. They defined the active region of a digitised PAL/NTSC TV
-signal to be 704 pixels wide, but allowed for an 8px margin on either side to
-accommodate for timing inaccuracies in analogue video equipment, hence 720 pixels
-per line, with the leftmost/rightmost 8px not intended to be visible (falls in
-the overscan region of an analogue TV signal, and most CRT TV sets won't show
-that area).
+ITU-R BT.601 (a television engineering standard) defined a sampling rate of
+13.5MHz for digital TV equipment that dealt with standard definition TV content.
+It also defines the active region of a digitised PAL/NTSC TV signal to be 704
+pixels wide, but allows for an 8px margin on either side to accommodate for
+timing inaccuracies in analogue video equipment, hence 720 pixels per line, with
+the leftmost/rightmost 8px not intended to be visible (falls in the overscan
+region of an analogue TV signal, and most CRT TV sets won't show that area to
+the viewer).
 
 The MPEG-4 file format normally encodes the aspect ratio of the picture in a
 video stream by giving the PAR instead of the DAR, whereas MPEG-2 instead has a
