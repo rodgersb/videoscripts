@@ -569,3 +569,8 @@ Solutions #2 and #3 above will avoid the resampling operation, so they will
 allow for a slightly faster encode in MEncoder. They have the caveat of slightly
 distorting the picture DAR by 2%, however this should not be noticeable to most
 viewers.
+
+You can read more about this topic here if you're intrigued:
+    http://en.wikipedia.org/wiki/Pixel_aspect_ratio
+    http://en.wikipedia.org/wiki/ITU-R_601
+
