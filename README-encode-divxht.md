@@ -521,11 +521,11 @@ solve for the third one:
 ITU-R BT.601 (a television engineering standard) defined a sampling rate of
 13.5MHz for digital TV equipment that dealt with standard definition TV content.
 It also defines the active region of a digitised PAL/NTSC TV signal to be 704
-pixels wide, but allows for an 8px margin on either side to accommodate for
-timing inaccuracies in analogue video equipment, hence 720 pixels per line, with
-the leftmost/rightmost 8px not intended to be visible (falls in the overscan
-region of an analogue TV signal, and most CRT TV sets won't show that area to
-the viewer).
+pixels wide, but allows for an 8px "overshoot" margin on either side to
+accommodate for timing inaccuracies in analogue video equipment, hence 720
+pixels per line, with the leftmost/rightmost 8px not intended to be visible
+(falls in the overscan region of an analogue TV signal, and most CRT TV sets
+won't show that area to the viewer).
 
 The MPEG-4 file format normally encodes the aspect ratio of the picture in a
 video stream by giving the PAR instead of the DAR, whereas MPEG-2 instead has a
