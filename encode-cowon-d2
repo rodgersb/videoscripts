@@ -382,7 +382,7 @@ fmt_help <<EOF
 
 #Note that output file A-V sync will be offset by -400ms; this is to
 #compensate for a bug in Cowon D2 video player firmware where A-V sync
-#irrepairbly drifts +400ms after the first seek operation is performed.
+#irreparably drifts +400ms after the first seek operation is performed.
 
 #To play a file encoded by this script properly on the Cowon D2, start the
 #video playing, then immediately perform at least one seek operation that
