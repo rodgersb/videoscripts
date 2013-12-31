@@ -985,10 +985,11 @@ LONGOPTS="delete-input-file,output-dir:,output-file:"\
 ",mencoder-cmd:,renice:,dry-run,threads:"\
 ",help,verbose,version"
 if [ $HAVE_GNU_GETOPT -eq 1 ]; then
-    if ! eval set -- `getopt -o $SHORTOPTS -l $LONGOPTS -n "$PROGNAME" -- "$@"`; then
+    if ! escaped_options=`getopt -o $SHORTOPTS -l $LONGOPTS -n "$PROGNAME" -- "$@"`; then
         print_try_help
         exit 1
     fi
+    eval "set -- $escaped_options"
 else
     for arg; do
         case $arg in
