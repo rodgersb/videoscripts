@@ -40,6 +40,12 @@ The SD2010KY file browser truncates the file names to 15 characters, which is a
 poor design choice on Toshiba's part, but it doesn't cause problems if more than
 one file has the same leading 15 characters in their name.
 
+I can't find out much about the technicals of the `.divx` container format.
+Apparently it's a subset of the AVI format, and possibly might be used for the
+DivX VOD service? The NV-VP60 manual mentions that it supports this file format
+too, but MPlayer doesn't seem able to generate this container, so I'll just
+disregard it for now.
+
 Container format requirements
 -----------------------------
 
