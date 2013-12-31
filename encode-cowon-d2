@@ -955,7 +955,7 @@ Please use the short version of each option."
             ;;
         esac
     done
-    if ! eval set -- `
+    if ! escaped_options=`
             while getopts $SHORTOPTS opt; do
                 [ $opt = '?' ] && exit 1
                 printf '%s\n' '-'$opt
@@ -968,6 +968,7 @@ Please use the short version of each option."
         print_try_help
         exit 1
     fi
+    eval "set -- $escaped_options"
 fi
 
 while [ "x$1" != 'x--' ]; do
