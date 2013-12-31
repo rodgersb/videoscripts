@@ -1704,11 +1704,11 @@ Use the \`-a' option to supply the proper aspect ratio manually."
         # (TPAR) can be forced via the following algorithm:
         #
         # if CPAR > TPAR then
+        #   upsample horizontally by CPAR/TPAR if within constraints
+        #   or else downsample vertically by TPAR/CPAR
+        # else if CPAR < TPAR then
         #   upsample vertically by TPAR/CPAR if within constraints
         #   or else downsample horizontally by CPAR/TPAR
-        # else if CPAR < TPAR then
-        #   upsample horizontally by TPAR/CPAR if within constraints
-        #   or else downsample vertically by CPAR/TPAR
         # end if
         #
         # POSIX bc variables:
