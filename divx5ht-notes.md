@@ -231,6 +231,9 @@ has one video and one audio stream:
 Codec requirements
 ------------------
 
+The video codec that should be used is "MPEG-4 Part 2"; to select this in
+MEncoder use the option `-lavcopts vcodec=mpeg4`.
+
 The DivX Home Theatre spec states B-type frames (bidirectional predictive) may
 only occur between other P (forward predictive) or I (intra) frames. I've also
 read online forum posts stating that B-frames should not be used in interlaced
