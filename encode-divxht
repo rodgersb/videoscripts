@@ -409,7 +409,7 @@ fmt_help <<EOF
 #MPlayer/MEncoder process control options
 #----------------------------------------
 -M, --mencoder-cmd=cmd
-    Name of MEncoder instance used for encoding (default="$DFL_MENCODER") If
+    Name of MEncoder instance used for encoding (default="$DFL_MENCODER"), If
     <cmd> is surrounded by double-quotes, can also include extra command-line
     options to supply to MEncoder.
 -N, --renice=pri
