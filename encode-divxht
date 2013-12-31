@@ -1865,7 +1865,7 @@ EOF
 EOF
         bc_read_result target_par_width target_par_height
         found_std_par=0
-        for par_spec in $FORCE_MPEG4_STD_PAR; do
+        for par_spec in $MPEG4_STD_PARS; do
             par=${par_spec#*:}
             par_width=${par%/*}
             par_height=${par#*/}
