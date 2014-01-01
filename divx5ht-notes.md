@@ -14,13 +14,13 @@ Both these devices have the "DivX" logo on their front panel.
 Brief technical details on constrains for the DivX Home Theatre profile:
 <http://www.divx.com/files/DivX-Profiles_Tech-Specs.pdf>
 
-Note that the NV-VP60 manual states the player also supports MPEG-4 Advanced
-Simple Profile video files in an `.asf` container, however this is constrained
-to 12.5fps/15fps frame-rate maximum and 352x288/352x240 pixel resolution
-maximum. Not really desirable for most content viewing - rather Panasonic likely
-intended this feature for viewing content produced by low-grade video cameras or
-mobile phones (perhaps they didn't want to license the full MPEG-4 codec for
-cost reasons?).
+Note that the NV-VP60 manual states the player also supports MPEG-4
+Simple Profile video files in an `.asf` container, however this is
+constrained to 12.5fps/15fps frame-rate maximum and 352x288/352x240
+pixel resolution maximum. Not really desirable for most content viewing
+- rather Panasonic likely intended this feature for viewing content
+produced by low-grade video cameras or mobile phones (perhaps they
+didn't want to license the full MPEG-4 codec for cost reasons?).
 
 File naming requirements
 ------------------------
