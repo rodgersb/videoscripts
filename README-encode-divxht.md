@@ -6,32 +6,28 @@ standard-definition DivX 5 AVI file that can be played back on a standalone DVD
 player that has native DivX 5 Home Theatre profile support.
 
 My primary motivation for writing this script was to allow me to archive
-recorded content off a DVR onto DVD-R and play it back later on a DVD player (w/
-DivX support) as a replacement for my old VHS VCR, but it can also be used if
-you want to watch, say, purchased/downloaded digital video content on your TV
-set.
+recorded content off a DVR onto DVD-R and play it back later on my DVD
+player (which supports DivX Home Theatre profile) as a replacement for
+my old VHS VCR, but it can also be used if you want to watch, say,
+purchased or downloaded digital videos on your TV set.
 
-While you could type out the MEncoder commands manually, it's quite an
-error-prone process if you do it frequently, and you also have to run MEncoder
-twice when doing two-pass encoding. The risk of selecting wrong arguments in
-MEncoder can result in wasting hours producing a file that isn't playable on a
+While you could type out the MEncoder commands manually each time to do
+the transcoding, it's quite an error-prone process if you do it
+frequently, and you also have to run MEncoder twice when doing two-pass
+encoding. The risk of selecting wrong arguments in MEncoder can result
+in wasting hours of CPU time producing a file that isn't playable on a
 DivX-equipped DVD player.
-
-This script takes all the trouble out of the encoding task - it ensures the
-output file produced is playable on all hardware DivX players, and also
-facilitates 2-pass encoding by default. It also renices the MEncoder encoding
-process (which will be CPU-bound) so it doesn't detract from the response time
-of interactive desktop applications on your system.
 
 I've tested this script on vast ranges of input files, including HD content,
 high-framerate content (50 or 60fps), regular Youtube videos and DVB-T/S/C
 broadcast streams. It handles all these types almost transparently for you (see
 below for a few notes).
 
-For this script you will need [MPlayer](http://www.mplayerhq.hu/) installed on
-your system, and compiled with at least DivX 5 support through its libavcodec
-(lavc) library and MPEG-1 layer III audio encoding support via the LAME library.
-Some modes also require [FFmpeg](http://www.ffmpeg.org/).
+For this script you will need [MPlayer](http://www.mplayerhq.hu/)
+installed on your system, and compiled with at least MPEG-4 Part 2
+(Advanced Simple Profile) support through its libavcodec (lavc) library
+and MPEG-1 layer III audio encoding support via the LAME library. Some
+modes also require [FFmpeg](http://www.ffmpeg.org/).
 
 This script also assume the POSIX command-line program
 [bc](http://en.wikipedia.org/wiki/Bc_programming_language) is available for
@@ -57,10 +53,10 @@ on these constraints. Your mileage may vary, so I advise that you please test
 the output of this script on your own player using some short input files on
 rewritable DVD media to avoid wasting DVD-Rs burning unplayable files.
 
-Please note that I'm based in Australia, which uses PAL and DVB-T as its TV and
-broadcasting standards. These use a frame rate of 25fps. I haven't had the
-opportunity to test this script with ATSC streams from North American DVRs, etc.
-Feedback and code corrections are welcome though.
+Please note that I'm based in Australia, which uses PAL and DVB-T as its
+TV  broadcasting standard. This uses a frame rate of 25fps. I haven't had
+the opportunity to test this script with ATSC streams from North
+American DVRs, etc. Feedback and code corrections are welcome though.
 
 If you frequently deal with content that is NTSC-based (frame rate 29.97fps or
 30fps), then I recommend editing the line containing `DFL_FPS=25` in the script
@@ -292,7 +288,7 @@ Each DivX HT output file will be named `program_episode<n>.avi`. The output
 files will have the same video bitrate as the input files.
 
 Encodes a typical MPEG-2 video stream captured from a standard-definition DVR
-keeping it at broadcast quality:
+(which is usually interlaced scan) keeping it at broadcast quality:
 
     $ encode-divxht -I -b2500 recorded_dvr_programme.mpg
 
@@ -423,6 +419,28 @@ I've decided performing inverse-telecining is outside the scope of this script,
 since the objective is to enable a video file to be played on a conventional
 standard-definition PAL/NTSC TV set (which is interlaced by nature). This script
 will leave the interlacing intact when the `-I` option is present.
+
+
+Known issues
+------------
+
+No major issues that I'm particularily aware of at the moment.
+
+It's not clear to me whether MPEG-1 Layer II audio is meant to be a
+supported audio format in the DivX Home Theatre profile specification.
+
+The two hardware DVD/DivX players I tested happily play back MPEG-1
+Layer II audio in an AVI file without any problems, and it's not
+surprising given that MPEG-1 Layer II is a required audio codec for the
+DVD-Video specification.
+
+Since MPEG-1 Layer II audio is also used in SD-DVB, it's quite
+convenient for transcoding DVB recordings, as I can leave the audio
+stream intact and not suffer any quality loss.
+
+Please let me know if you encounter a H/W DivX Home Theatre player that
+refuses to play back AVI files with MPEG-1 Layer II audio (see the
+reporting bugs section below).
 
 
 Reporting bugs

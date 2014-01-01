@@ -11,10 +11,12 @@ use by myself and should be reasonably well tested and robust, they come with
 purpose**. I will not be held responsible for any loss or damage that these
 scripts may cause. Please use them at your own risk.
 
-For each of these scripts, you will need [MPlayer](http://www.mplayerhq.hu/)
-installed on your system, and compiled with at least DivX 5 support through its
-libavcodec (lavc) library and MPEG-1 layer III audio encoding support via the
-LAME library. Some modes also require [FFmpeg](http://www.ffmpeg.org/).
+For each of these scripts, you will need
+[MPlayer](http://www.mplayerhq.hu/) installed on your system, and
+compiled with at least MPEG-4 Part 2 (Advanced Simple Profile) support
+through its libavcodec (lavc) library and MPEG-1 layer III audio
+encoding support via the LAME library. Some modes also require
+[FFmpeg](http://www.ffmpeg.org/).
 
 These scripts are written for the standard POSIX shell `/bin/sh`. I've tested
 them with GNU Bash 2.x and also Almquist shell.
@@ -38,19 +40,22 @@ standard-definition DivX 5 AVI file that can be played back on a standalone DVD
 player that has native DivX 5 Home Theatre profile support.
 
 My primary motivation for writing this script was to allow me to archive
-recorded content off a DVR onto DVD-R and play it back later on a DVD player (w/
-DivX support), but it can also be used if you want to watch, say, purchased or
-downloaded digital videos on your TV set.
+recorded content off a DVR onto DVD-R and play it back later on my DVD
+player (which supports DivX Home Theatre profile) as a replacement for
+my old VHS VCR, but it can also be used if you want to watch, say,
+purchased or downloaded digital videos on your TV set.
 
-While you could type out the MEncoder commands manually, it's quite an
-error-prone process if you do it frequently, and you also have to run MEncoder
-twice when doing two-pass encoding. The risk of selecting wrong arguments in
-MEncoder can result in wasting hours producing a file that isn't playable on a
+While you could type out the MEncoder commands manually each time to do
+the transcoding, it's quite an error-prone process if you do it
+frequently, and you also have to run MEncoder twice when doing two-pass
+encoding. The risk of selecting wrong arguments in MEncoder can result
+in wasting hours of CPU time producing a file that isn't playable on a
 DivX-equipped DVD player.
 
-This script takes all the trouble out of the encoding task - it ensures the
-output file produced is playable on all hardware DivX players, and also does
-2-pass encoding by default. Invocation is as simple as:
+This script takes all the trouble out of the transcoding task - it
+ensures the output file produced is playable on all hardware DivX
+players, and also does 2-pass encoding by default. Invocation is as
+simple as:
 
     $ encode-divxht file.mp4 ...
 
@@ -58,8 +63,8 @@ It will produce a similar named file with an `.avi' extension as the output.
 
 Most DVD players that support DivX Home Theatre will have a "DivX"  logo
 somewhere on the front panel. There will usually also be a "DivX VOD
-registration" option somewhere in the setup menu (for the ill-fated DivX Video
-on Demand service).
+registration" option somewhere in the setup menu (for the seldom-used
+DivX Video on Demand service).
 
 See the file README-encode-divxht.md for more information on how to use it. You
 can also run it with the `-h` option to see a brief summary of each option.
