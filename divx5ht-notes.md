@@ -19,8 +19,7 @@ Simple Profile video files in an `.asf` container, however this is
 constrained to 12.5fps/15fps frame-rate maximum and 352x288/352x240
 pixel resolution maximum. Not really desirable for most content viewing
 - rather Panasonic likely intended this feature for viewing content
-produced by low-grade video cameras or mobile phones (perhaps they
-didn't want to license the full MPEG-4 codec for cost reasons?).
+produced by low-grade video cameras or mobile phones.
 
 File naming requirements
 ------------------------
