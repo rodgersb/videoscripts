@@ -191,6 +191,9 @@ To get a list of options, run the script with the `-h' option:
             resilient at the expense of lesser compression ratio. Default is 250.
       -t, --turbo
             Turbo mode; trades off some output quality for faster encode.
+      -u, --hq
+            High quality mode: trades off longer encoding time for slightly better
+            picture quality.
       -X, --xvid
             Use xvid library to encode video, instead of MPlayer's
             libavcodec. Requires MPlayer to be compiled with xvid support.
@@ -663,6 +666,5 @@ viewers.
 You can read more about this topic here if you're intrigued:
 
   * http://en.wikipedia.org/wiki/Pixel_aspect_ratio
-  
-  * http://en.wikipedia.org/wiki/ITU-R_601
 
+  * http://en.wikipedia.org/wiki/ITU-R_601
