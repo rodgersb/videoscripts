@@ -15,7 +15,7 @@ Brief technical details on constrains for the DivX Home Theatre profile:
 <http://www.divx.com/files/DivX-Profiles_Tech-Specs.pdf>
 
 Note that the NV-VP60 manual states the player also supports MPEG-4 Advanced
-Simple Profile video files (in an `.asf` container), however this is constrained
+Simple Profile video files in an `.asf` container, however this is constrained
 to 12.5fps/15fps frame-rate maximum and 352x288/352x240 pixel resolution
 maximum. Not really desirable for most content viewing - rather Panasonic likely
 intended this feature for viewing content produced by low-grade video cameras or
@@ -39,7 +39,8 @@ to DVD-R on a UNIX-like platform.
 The SD2010KY file browser truncates the file names to 15 characters, which is a
 poor design choice on Toshiba's part, but it doesn't cause problems if more than
 one file has the same leading 15 characters in their name - the menu selections
-appear identical but it can still access each file.
+appear identical but it can still access each file if you can remember their
+alphabetical sort order.
 
 I can't find out much about the technicals of the `.divx` container format.
 Apparently it's a subset of the AVI format, and possibly might be used for the
@@ -172,13 +173,14 @@ chosen to be a multiple of 16, which is feasible for MPEG-2 motion compensation.
 The reason for adding 8px on either side of each scanline to make 720px wide
 rows is to allow for timing instability tolerances when digitising analogue
 video signals from electromechanical mediums such as tape, laserdisc etc. If the
-active start and end timings are off slightly by a few microseconds, then 720px
-allows the video editor on a digital workstation to correct the picture by
+active line start and end timings are off slightly by a few microseconds, then
+720px allows the video editor on a digital workstation to correct the picture by
 shifting it left or right slightly, without having to do a re-capture.
 
 Typically the left/rightmost 8px columns in a 720x576 or 720x480 DVD/DVB picture
 should not be visible on a conventional CRT TV set. Some TV or DVD producers put
-content there anyway, while others will black out these sections.
+content there anyway, while others will leave these sections black (or fill them
+with a solid colour).
 
 #MPlayer crop/aspect issues
 
@@ -199,8 +201,8 @@ DivX version 5.
 The NV-VP60 uses some form of linear interpolation when rescaling the
 video spatially.
 
-Audio requirements
-------------------
+Audio codec requirements
+------------------------
 
 Audio should either be MPEG-1 Layer III or MPEG-2 AAC (with either mono, stereo
 or 5.1 channels). MPEG-4 AAC support is optional according to the DivX Home
@@ -228,11 +230,11 @@ has one video and one audio stream:
 
 (Note the order and repetition of the arguments is significant.)
 
-Codec requirements
-------------------
+Video codec requirements
+------------------------
 
-The video codec that should be used is "MPEG-4 Part 2"; to select this in
-MEncoder use the option `-lavcopts vcodec=mpeg4`.
+The video codec that should be used is "MPEG-4 Part 2 (Advanced Simple
+Profile)"; to select this in MEncoder use the option `-lavcopts vcodec=mpeg4`.
 
 The DivX Home Theatre spec states B-type frames (bidirectional predictive) may
 only occur between other P (forward predictive) or I (intra) frames. I've also
@@ -249,8 +251,9 @@ if B-frames are used in interlaced footage. B-frames in progressive scan content
 are fine though, and usually result in a slightly smaller file size.
 
 I've also noted that MPlayer 1.1 libavcodec MPEG-4 encoding also causes minor
-macroblock glitching on fast-moving interlaced scenes - this was observed
-independently on computer. May be a encoder bug?
+macroblock glitching on fast-moving interlaced scenes (e.g. time-lapse footage)
+- this was observed independently on computer in both MPlayer and FFmpeg. May be
+a MEncoder bug?
 
 Average video bitrate must not exceed 4Mbps. The peak video bitrate must not
 exceed 4.854Mbps for longer than one second.
