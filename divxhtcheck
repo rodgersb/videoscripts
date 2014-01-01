@@ -493,18 +493,17 @@ This file is likely to play back at the wrong aspect on H/W DivX standalone play
         fi
     fi
 
-    # Check if DivX MPEG-4 stream contains multiple consecutive
-    # bi-directional predictive frames (B-frames); this is a violation
-    # of the DivX 5 HT spec, and most hardware players (such as the
-    # Panasonic NV-VP60) won't decode these extra B-frames, resulting in
-    # jerky motion.
+    # Check if DivX MPEG-4 stream contains packed bi-directional
+    # predictive frames (B-frames); this is a violation of the DivX 5 HT
+    # spec, and most hardware players (such as the Panasonic NV-VP60)
+    # won't decode these extra B-frames, resulting in jerky motion.
     #
     # MPlayer produces a warning message when they are encountered. The
     # only way we can detect these frames is to play back a brief
     # portion of the movie and monitor MPlayer's diagnostic output.
     if mplayer -vo null -ao null -frames 1 -benchmark -quiet "$1" 2>&1 \
         | grep -q "$MPLAYER_WARN_BFRAMES_TEXT"; then
-        print_failure "\`$1' contains multiple consecutive B-type frames and must be re-encoded"
+        print_failure "\`$1' contains packed B-type frames and must be re-encoded"
         failed=1
     fi
 
