@@ -22,7 +22,7 @@
 #   * A POSIX-compatible bc implementation (GNU bc is also good)
 
 # Version of this script (use undocumented -V option to print version)
-VERSION=1.1.0
+VERSION=1.1.1
 # Name of this script, used for displaying error messages.
 PROGNAME="${0##*/}"
 # Use this instance of MEncoder by default
