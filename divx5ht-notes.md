@@ -204,13 +204,16 @@ video spatially.
 Audio codec requirements
 ------------------------
 
-Audio should either be MPEG-1 Layer III or MPEG-2 AAC (with either mono, stereo
-or 5.1 channels). MPEG-4 AAC support is optional according to the DivX Home
-Theatre technical specs document.
+Audio should either be MPEG-1 Layer III or Dolby AC-3 (with either mono,
+stereo or up to 5.1 channels). MPEG-4 AAC support is optional according
+to the DivX Home Theatre technical specs document.
 
-The NV-VP60 and SD2010KY don't support AAC, however they also support MPEG-1
-Layer II audio as well, which is the audio format for standard definition DVB -
-useful as it avoids a re-encode when archiving DVB content.
+The NV-VP60 and SD2010KY don't support AAC, however they also support
+MPEG-1 Layer II audio as well, which is the audio format for standard
+definition DVB - useful as it avoids a re-encode when archiving DVB
+content. It's not clear if the DivX HT spec permits MPEG-1 Layer II, but
+every DVD player that plays DivX ought to support it, as MPEG-1 Layer II
+is a required part of the DVD-Video specification.
 
 All bitrates for AAC and MPEG-1 Layer II/III seem to work fine, as well as
 variable bitrate for MPEG-1 Layer III. For most DVD-Video streams, you
