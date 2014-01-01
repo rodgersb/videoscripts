@@ -25,8 +25,8 @@ of interactive desktop applications on your system.
 
 I've tested this script on vast ranges of input files, including HD content,
 high-framerate content (50 or 60fps), regular Youtube videos and DVB-T/S/C
-broadcast streams. It handles all these types almost (see below for a few notes)
-transparently for you.
+broadcast streams. It handles all these types almost transparently for you (see
+below for a few notes).
 
 For this script you will need [MPlayer](http://www.mplayerhq.hu/) installed on
 your system, and compiled with at least DivX 5 support through its libavcodec
@@ -41,24 +41,26 @@ distribution.
 DivX Home Theatre specs and testing reference implementations
 -------------------------------------------------------------
 
-I've used a Panasonic NV-VP60 DVD/VHS combo player (mfd. 2006) as the
-reference model for testing. It's taken me many hours of experimentation
-and many spent DVD-R coasters, but I've determined through
-trial-and-error what constraints it imposes on the files it will play
-back correctly.
+I've used the following DVD players for reference testing:
+
+  * Panasonic NV-VP60 DVD/VHS combo player (mfd. 2006)
+  * Toshiba SD2010KY DVD player (mfd. Nov. 2012)
+
+It's taken me many hours of experimentation and many spent DVD-R coasters, but
+I've determined through trial-and-error what constraints these players impose on
+the files they will play back correctly.
 
 I've uploaded the text file `divx5ht-notes.md' as a supplementary on my
-observations with what A/V format profiles the NV-VP60 will reliably
-play back. Other DivX-HT DVD players may be more strict or more lenient
-on these constraints. Your mileage may vary, so I advise that you please
-test the output of this script on your own player using some short input
-files on rewritable DVD media to avoid wasting DVD-Rs burning unplayable
-files.
+observations with what A/V format profiles the NV-VP60 and SD2010KY will
+reliably play back. Other DivX-HT DVD players may be more strict or more lenient
+on these constraints. Your mileage may vary, so I advise that you please test
+the output of this script on your own player using some short input files on
+rewritable DVD media to avoid wasting DVD-Rs burning unplayable files.
 
 Please note that I'm based in Australia, which uses PAL and DVB-T as its TV and
 broadcasting standards. These use a frame rate of 25fps. I haven't had the
 opportunity to test this script with ATSC streams from North American DVRs, etc.
-Feedback is welcome though.
+Feedback and code corrections are welcome though.
 
 If you frequently deal with content that is NTSC-based (frame rate 29.97fps or
 30fps), then I recommend editing the line containing `DFL_FPS=25` in the script
@@ -286,7 +288,7 @@ Encodes a batch of videos in the one directory:
 
     $ encode-divxht programme_episode*.mp4
 
-Each DivX HT output file will be named `program_episode<x>.avi`. The output
+Each DivX HT output file will be named `program_episode<n>.avi`. The output
 files will have the same video bitrate as the input files.
 
 Encodes a typical MPEG-2 video stream captured from a standard-definition DVR
@@ -297,27 +299,72 @@ keeping it at broadcast quality:
 What video bitrates to use
 --------------------------
 
-These observations are from my own personal experience. Your mileage may
-vary. These bitrates always assume the slower default two-pass mode is
-used, which gives better quality-to-bitrate than the quicker one-pass
-(`-1' option) mode.
+These observations are from my own personal experience. Your mileage may vary.
 
-    * -b750 to -b1000: Gives VHS-like quality, with a fair bit of high-frequency
-      noise, minor quilting and blocking artifacts. Will fit around 10-12hrs
-      footage on a single-layer DVD-R. Max file duration is ~5hrs.
+These bitrates assume the slower default two-pass mode is used, which gives
+better quality-to-bitrate than the quicker one-pass (`-1' option) mode.
 
-    * -b1500 to -b2000: Very close to SD broadcast quality. Since keyframes are
-      only generated every 10 seconds, sometimes there may be small
-      barely-noticeable segments of the picture that periodically discolour
-      slightly over a few seconds, then "snap back" to their proper colour. One
-      example is human faces at moderate distance, if you look around the
-      hairline fringe. Will fit around 5-6hrs footage on a single-layer DVD-R. Max
-      file duration is ~2.5hrs.
+They also assume full-resolution (720x576 or 720x480) standard definition (SD)
+interlaced content; if using lesser-resolution content then you can scale down
+these bitrates a bit further without harm.
 
-    * -b2500 or higher: Broadcast SD quality. Most of the noise you'll now be
-      seeing will probably be as a result of the TV broadcaster throttling down
-      their bitrate, if any. 2500kbps video will fit around 4hrs footage on a
-      single layer DVD-R. Max file duration is ~2hrs.
+    * `-b750` to `-b1000`: Gives VHS-like quality, with a fair bit of
+      high-frequency noise, minor quilting and blocking artifacts.
+
+      Will fit around 10-12hrs footage on a single-layer DVD-R. Max file
+      duration is ~5hrs unless you have a player that supports AVI OpenDML
+      extensions.
+
+    * `-b1500` to `-b2000`: Very close to SD broadcast quality. Since keyframes
+      by default are only generated every 10 seconds, sometimes there may be
+      small barely-noticeable segments of the picture that periodically
+      discolour slightly over a few seconds, then "snap back" to their proper
+      colour at the next keyframe.
+
+      One example is human faces or bodies at moderate distance (when set
+      against a very dark or very bright background); the areas of skin close to
+      the background sometime have a tendency to temporarily stain blue, e.g. if
+      you look around the hairline fringe and around the eyes.
+
+      Another case is sometimes slow panning or zooming out over a landscape
+      that has a lot of smooth cloud-like colour gradients; if you look at the
+      very edges of the picture where new scenery is appearing into frame,
+      sometimes it will be coming in slightly off-colour until the next
+      keyframe.
+
+      Will fit around 5-6hrs footage on a single-layer DVD-R. Max file duration
+      is ~2.5hrs unless you have a player that supports AVI OpenDML extensions.
+
+    * `-b2500` or higher: Pretty-much broadcast SD quality. Most of the noise
+      you'll now be seeing will probably be as a result of the TV broadcaster
+      throttling down their bitrate, if any.
+
+      If the facial discolouration problem mentioned above still persists at
+      2500kbps or higher, then you can try lowering the keyframe interval (e.g.
+      use `-k75` to generate a keyframe every 3 seconds for PAL 25fps content).
+      This helps eliminate the problem, at the trade-off of less compressibility
+      (the overall quality of the picture will be similar to that of a slightly
+      lower bitrate).
+
+      I suspect the cause for this "colour-staining" problem is likely a
+      consequence of using a large number of consecutive P-type (forward
+      predictive) frames; since these frames are encoded as an approximation of
+      luma/chroma pixel level differences from a previous frame, there
+      inevitably will be some residual accumulation error build-up in some pixel
+      colours until the next I-type (intra) frame comes along and corrects them.
+
+      If you are using progressive scan content, then the default use of B-type
+      (bidirectional predictive) frames should reduce the amount of residual
+      error build-up.
+
+      2500kbps video will fit around 4hrs footage on a single layer DVD-R. Max
+      file duration is ~2hrs unless you have a player that supports OpenDML.
+
+Keep in mind that interlaced content (see the *Caveats* section) generally
+demands a somewhat higher bitrate to give the same picture quality, compared to
+progressive scan. When testing this script on encoding progressive-scan DVD
+footage (e.g. feature-length films), I generally found `-b1500` was quite an
+acceptable starting point for most footage.
 
 
 The options offered aren't flexible enough
@@ -461,7 +508,7 @@ What's with the non-DivX-HT compliant options?
 ----------------------------------------------
 
 Some hardware DivX players unofficially support additional MPEG-4 features that
-are not specified in the DivX Home Theatre specification. 
+are not specified in the DivX Home Theatre specification.
 
 For example, during testing I discovered the Panasonic NV-VP60 will support any
 custom PAR (see `-P` option and discussion in section below) which gives much
@@ -596,6 +643,8 @@ distorting the picture DAR by 2%, however this should not be noticeable to most
 viewers.
 
 You can read more about this topic here if you're intrigued:
-    http://en.wikipedia.org/wiki/Pixel_aspect_ratio
-    http://en.wikipedia.org/wiki/ITU-R_601
+
+  * http://en.wikipedia.org/wiki/Pixel_aspect_ratio
+  
+  * http://en.wikipedia.org/wiki/ITU-R_601
 
