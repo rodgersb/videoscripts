@@ -95,6 +95,16 @@ MAX_MP3_BITRATE_KBPS=320
 MAX_AC3_BITRATE_KBPS=448
 # Maximum bitrate allowed for MPEG-4 AAC (kbps)
 MAX_AAC_BITRATE_KBPS=1152
+# libavcodec options to use for turbo, default and high quality setting
+# These were suggested by the MPlayer manual at
+#   <http://www.mplayerhq.hu/DOCS/HTML/en/menc-feat-enc-libavcodec.html>
+TURBO_LAVCOPTS="mbd=2"
+DFL_LAVCOPTS="mbd=2:v4mv:trell"
+HQ_LAVCOPTS="mbd=2:v4mv:trell:last_pred=2:dia=-1:cmp=3:subcmp=3:precmp=0:vqcomp=0.6"
+# xvid options to use for turbo, default and high quality setting
+TURBO_XVIDENCOPTS="vhq=1:me_quality=3:notrellis"
+DFL_XVIDENCOPTS="vhq=3:trellis"
+HQ_XVIDENCOPTS="vhq=4:trellis:chroma_opt"
 # Default terminal width to assume if unavailable
 DFL_TERM_WIDTH=80
 
@@ -348,6 +358,9 @@ fmt_help <<EOF
     the expense of lesser compression ratio. Default is $DFL_KEYINT.
 -t, --turbo
     Turbo mode; trades off some output quality for faster encode.
+-u, --hq
+    High quality mode: trades off longer encoding time for slightly
+    better picture quality.
 -X, --xvid
     Use xvid library to encode video, instead of MPlayer's libavcodec. Requires
     MPlayer to be compiled with xvid support.
@@ -927,6 +940,7 @@ USE_OPENDML=0
 USE_XVID=0
 FORCE_MPEG4_STD_PAR=1
 FORCE_SQUARE_PIXELS=0
+HQ=0
 DRY_RUN=0
 VERBOSE=0
 
@@ -973,13 +987,13 @@ define i(n) {
 }
 EOF
 
-SHORTOPTS='17A:a:Bb:Cc:Dd:Ee:Ff:GgHh:IJ:jk:L:M:N:nOo:PpQqS:s:tT:VvW:XxY'
+SHORTOPTS='17A:a:Bb:Cc:Dd:Ee:Ff:GgHh:IJ:jk:L:M:N:nOo:PpQqS:s:tT:uVvW:XxY'
 LONGOPTS="delete-input-file,output-dir:,output-file:"\
 ",start:,duration:"\
 ",aspect:,ffmpeg-decode,fps:,noskip"\
 ",crop-720-704,expand-aspect-720,auto-crop,crop:,height:,panscan,square-pixels,width:"\
 ",size:,vbitrate:"\
-",single-pass,greyscale,interlaced,keyint:,turbo,xvid"\
+",single-pass,greyscale,interlaced,keyint:,turbo,xvid,hq"\
 ",acodec-mp3:,acodec-ac3:,reencode-audio"\
 ",bframes-interlaced,gmc,acodec-aac:,copy-aac,custom-par,qpel,opendml"\
 ",mencoder-cmd:,renice:,dry-run,threads:"\
@@ -1237,6 +1251,7 @@ while [ "x$1" != 'x--' ]; do
             DOWNSCALE_WIDTH=$2
             shift
         ;;
+        -u | --hq) HQ=1;;
         -v | --verbose) VERBOSE=1;;
         -X | --xvid) USE_XVID=1;;
         -x | --reencode-audio) FORCE_REENCODE_AUDIO=1;;
@@ -1289,6 +1304,10 @@ elif [ -n "$BUDGET_FILESIZE_MB" -a $USE_OPENDML -eq 0 ] \
 elif [ $CROP_720_704 -eq 1 -a $EXPAND_ASPECT_720 -eq 1 ]; then
     print_error "cannot use both \`-7' (crop 720px to 704px) and"\
 " \`-E' (widen aspect 45/44 if 720px) options together"
+    print_try_help
+    exit 1
+elif [ $HQ -eq 1 -a $TURBO -eq 1 ]; then
+    print_error "the \`-u' (high quality) and \`-t' (turbo) options cannot be used together"
     print_try_help
     exit 1
 fi
@@ -1375,18 +1394,28 @@ if [ $USE_XVID -eq 1 ]; then
     [ $USE_GMC -eq 1 ] && XVIDENCOPTS_BASE="$XVIDENCOPTS_BASE:gmc"
     [ $USE_QPEL -eq 1 ] && XVIDENCOPTS_BASE="$XVIDENCOPTS_BASE:qpel"
     if [ $TURBO -eq 1 ]; then
-        XVIDENCOPTS_BASE="$XVIDENCOPTS_BASE:vhq=1:me_quality=3:notrellis"
+        # Low video quality
+        XVIDENCOPTS_BASE="$XVIDENCOPTS_BASE:$TURBO_XVIDENCOPTS"
+    elif [ $HQ -eq 1 ]; then
+        # High video quality
+        XVIDENCOPTS_BASE="$XVIDENCOPTS_BASE:$HQ_XVIDENCOPTS"
     else
-        XVIDENCOPTS_BASE="$XVIDENCOPTS_BASE:vhq=3:trellis"
+        # Default video quality
+        XVIDENCOPTS_BASE="$XVIDENCOPTS_BASE:$DFL_XVIDENCOPTS"
     fi
 else
     # Using MPlayer's libavcodec for encoding DivX video
     LAVCOPTS_BASE="vcodec=mpeg4:v4mv:"\
 "vrc_maxrate=$PEAK_VBITRATE_KBPS:vrc_buf_size=$VBV_SIZE_KBIT:keyint=$KEYINT"
     if [ $TURBO -eq 1 ]; then
-        LAVCOPTS_BASE="$LAVCOPTS_BASE:turbo"
+        # Low video quality
+        LAVCOPTS_BASE="$LAVCOPTS_BASE:$TURBO_LAVCOPTS"
+    elif [ $HQ -eq 1 ]; then
+        # High video quality
+        LAVCOPTS_BASE="$LAVCOPTS_BASE:$HQ_LAVCOPTS"
     else
-        LAVCOPTS_BASE="$LAVCOPTS_BASE:vhq:trell"
+        # Default video quality
+        LAVCOPTS_BASE="$LAVCOPTS_BASE:$DFL_LAVCOPTS"
     fi
     [ $GREYSCALE -eq 1 ] && LAVCOPTS_BASE="$LAVCOPTS_BASE:gray"
     [ $NTHREADS -gt 1 ] && LAVCOPTS_BASE="$LAVCOPTS_BASE:threads=$NTHREADS"
