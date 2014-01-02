@@ -192,8 +192,8 @@ To get a list of options, run the script with the `-h' option:
       -t, --turbo
             Turbo mode; trades off some output quality for faster encode.
       -u, --hq
-            High quality mode: trades off longer encoding time for slightly better
-            picture quality.
+            High quality mode: longer encoding time for slightly better picture 
+            quality.
       -X, --xvid
             Use xvid library to encode video, instead of MPlayer's
             libavcodec. Requires MPlayer to be compiled with xvid support.
