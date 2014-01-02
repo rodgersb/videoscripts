@@ -48,7 +48,7 @@ Explanation of script command line options
     Usage: encode-cowon-d2 [OPTION...] VIDEO-FILES...
        or: encode-cowon-d2 [OPTION...] -o OUTPUT-AVI-FILE INPUT-VIDEO-FILE
     Converts video files to Cowon D2-playable DivX AVI using MPlayer.
-    
+
     Input/output file options
     -------------------------
       -D, --delete-input-file
@@ -57,7 +57,7 @@ Explanation of script command line options
             Directory where output files are written (default: same as source)
       -o, --output-file=name
             Output file name; can only be used if one input file is given.
-            
+
     Timecode selection options
     --------------------------
       -s, --start=ts
@@ -66,7 +66,7 @@ Explanation of script command line options
       -e, --duration=dur
             Stop encoding <dur> seconds after start of encoding. May be given as
             `mm:ss', `hh:mm:ss' or an absolute number of seconds.
-            
+
     Input video file decoding options
     ---------------------------------
       -a, --aspect=x
@@ -80,17 +80,17 @@ Explanation of script command line options
             Assume this frame rate (fps) for output if source frame rate is
             unavailable or if the input file is variable frame rate. Default
             assumed frame rate is 25fps. Must not exceed 30fps.
-            
+
             As a special case, if a frame rate of 50fps, 59.94fps or 60fps (or an
             input file with this frame rate) is given, then a filter that halves
             the frame rate will be used when producing the output file.
-            
+
       -Y, --noskip
             Use basic MEncoder A/V sync (eqv. "-noskip -mc 0") to suppress
             excessive "Skipping frame" messages.  Should only be used on
             well-formed input files. Should not be used with variable frame
             rate files.
-            
+
     Picture cropping/scaling/adjust options
     ---------------------------------------
       -C, --auto-crop
@@ -115,7 +115,7 @@ Explanation of script command line options
             to 1.333 (4:3) than the footage's original aspect. No action taken
             if <x> is further away from 1.333 than the film's original aspect
             (never zooms out).
-            
+
             For example, specifying `-Z14:9' for a 16:9-aspect input file would
             zoom-in the picture by a factor of 1.14x (8/7). The visible area of
             the film will be shown letterboxed 14:9 aspect, with 1/16th-width
@@ -123,11 +123,11 @@ Explanation of script command line options
             off. The resulting picture would then be 206px tall, rather than
             180px if no zooming/cropping was performed at all and the full 16:9
             image made visible.
-            
+
             As the Cowon D2's native screen is 320x240px (4:3 aspect), this option
             can provide a useful compromise for watching widescreen content on
             the D2.
-            
+
     Video bitrate management options
     --------------------------------
       -S, --size=n
@@ -137,7 +137,7 @@ Explanation of script command line options
       -b, --vbitrate=n
             Output video bitrate in kbps. Permitted maximum is 768kbps.
             Default for 1-pass encode is 384kbps, 2-pass encode is 256kbps.
-            
+
     Video encoding options
     ----------------------
       -1, --single-pass
@@ -148,7 +148,7 @@ Explanation of script command line options
             Assume source footage is interlaced. The odd/even fields of the
             footage will be combined through a de-interlace filter to create
             progressive-scan footage that can be displayed on the Cowon D2.
-            
+
             NOTE: Progressive-scan footage is assumed by default. MEncoder
             is unable to detect the presence of interlaced footage; you need
             to examine the source material yourself by pausing at scenes
@@ -156,7 +156,7 @@ Explanation of script command line options
             fast-moving portions of the still image, your footage is likely
             interlaced. Typically SD-DVB footage and DVDs of older TV programmes
             (pre-2000s) are interlaced. Some film DVDs may be hard-telecined.
-            
+
       -k, --keyint=n
             Generate keyframes every <n> frames. Maximum permitted is 250.
             Shorter keyframe intervals make the video more bit-error resilient
@@ -166,7 +166,7 @@ Explanation of script command line options
       -X, --xvid
             Use xvid library to encode video, instead of MPlayer's
             libavcodec. Requires MPlayer to be compiled with xvid support.
-            
+
     Audio encoding options
     ----------------------
       -A, --acodec-mp3=abr
@@ -183,8 +183,8 @@ Explanation of script command line options
             this option if the source audio stream is triggering decoding bugs
             on the Cowon D2 (e.g. playback stuttering, playback of some files
             ending prematurely).
-            
-            
+
+
     MPlayer/MEncoder process control options
     ----------------------------------------
       -M, --mencoder-cmd=cmd
@@ -199,13 +199,13 @@ Explanation of script command line options
             Number of concurrent threads to use for encoding (1-8, default
             1). Additional threads speed up encoding on multi-core systems but
             may produce slightly lesser quality than single-threaded mode.
-            
+
     All output files will take on the extension `.d2.avi'.
-    
+
     Note that output file A-V sync will be offset by -400ms; this is to
     compensate for a bug in Cowon D2 video player firmware where A-V sync
     irreparably drifts +400ms after the first seek operation is performed.
-    
+
     To play a file encoded by this script properly on the Cowon D2, start the
     video playing, then immediately perform at least one seek operation that
     lands anywhere but the start of the file (timecode 0:00:00). After this
@@ -246,6 +246,10 @@ A/V profile specs:
 
   * Container format must be AVI.
 
+    I haven't determined if OpenDML is supported, merely because I don't
+    have the patience to sit through a several-hour-long recording to
+    check for problems, sorry. Feedback is welcome, though.
+
   * Horizontal resolution must be a multiple of 16 pixels, and must not exceed
     320 pixels.
 
@@ -257,11 +261,25 @@ A/V profile specs:
     be spatially resampled. The Cowon D2 screen is 4:3 aspect, however I
     generally find most 16:9 widescreen content can be comfortably
     watched at 4:3 centre-extracted (using the `-p` option).
-    
-  * Bitrate must not exceed 768kbps.
+
+  * Video codec should be MPEG-4 Part 2 (Advanced Simple Profile).
+    Progressive scan only. B-frames are apparently not supported. I
+    suspect global motion compensation and quarter-pixel motion
+    compensation (qpel) aren't supported either.
+
+  * Video bitrate must not exceed 768kbps. I'm not 100% certain on this;
+    I have read forum postings online that suggest the D2 can handle up to
+    2Mbps, but I see little gain that this could offer given the
+    internal screen resolution.
 
   * Audio must be in MPEG-1 layer III stereo. If playback is stuttering
     on the D2, then try re-encoding the audio using the `-x` option.
+
+    I attempted to play back AVI files containing MPEG-1 layer II audio
+    to no avail; the D2 produced no sound, video playback stuttered for
+    a bit, then it usually goes on to the next file in the directory.
+    This is strange, as the D2 natively can play back stand-alone layer
+    II audio files (`.mp2`).
 
   * Key frame interval must not exceed 250 frames.
 
@@ -279,7 +297,8 @@ marginal increase in quality.
 
 The Cowon D2 apparently also supports Microsoft's WMV format, but MPlayer's
 support for this format is currently not as mature as that for DivX, so I'll
-ignore that capability for now. 
+ignore that capability for now.
+
 
 Caveats
 -------
