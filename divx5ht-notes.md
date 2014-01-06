@@ -41,11 +41,6 @@ one file has the same leading 15 characters in their name - the menu selections
 appear identical but it can still access each file if you can remember their
 alphabetical sort order.
 
-I can't find out much about the technicals of the `.divx` container format.
-Apparently it's a subset of the AVI format, and possibly might be used for the
-DivX VOD service? The NV-VP60 manual mentions that it supports this file format
-too, but MPlayer doesn't seem able to generate this container, so I'll just
-disregard it for now.
 
 Container format requirements
 -----------------------------
@@ -54,10 +49,10 @@ The resulting AVI file size ideally should not exceed 2GiB; this is a limitation
 of the standard Microsoft AVI indexing structures. The NV-VP60 manual explicitly
 states this restriction.
 
-The ISO 9660 file system also has an inherent file size limit of 4GiB, however
-it's recommended to keep files below 2GiB if possible because some OSes or
-embedded devices may mistakenly treat the file size field as a signed 32-bit
-integer.
+The ISO 9660 and FAT32 file systems also have an inherent file size limit of
+4GiB, however it's recommended to keep files below 2GiB if possible because some
+OSes or embedded devices may mistakenly treat the file size field as a signed
+32-bit integer.
 
 If the resulting AVI file exceeds 1GiB, then OpenDML indexes must be disabled
 (MEncoder option `-noodml`). Otherwise undesired behaviour may occur on NV-VP60
@@ -84,6 +79,14 @@ this FourCC code will likely *not* work.
 If you forget to specify this on the command line, you can fix it after the fact
 by hex-editing the resulting AVI file; the FourCC code is stored in two places
 at offsets `0x00000070` and `0x000000bc` in nearly all cases.
+
+### DivX Media Format container? (`.divx`)
+
+I can't find out much about the technicals of the `.divx` container format (also
+known as DMF, or DivX Media Format). Apparently it's a subset of the AVI format,
+and possibly might be used for the DivX VOD service? The NV-VP60 manual mentions
+that it supports this file format too, but MPlayer doesn't seem able to generate
+this container, so I'll just disregard it for now.
 
 Video frame rate
 ----------------
@@ -240,14 +243,22 @@ Profile) level 5"; to select this in MEncoder use the option `-lavcopts
 vcodec=mpeg4`.
 
 The DivX Home Theatre spec states B-type frames (bidirectional predictive) may
-only occur between other P (forward predictive) or I (intra) frames. I've also
-read online forum posts stating that B-frames should not be used in interlaced
-content.
+only occur once between other P (forward predictive) or I (intra) frames; no
+consecutive B-frames are allowed. I've also read online forum posts stating that
+B-frames should not be used in interlaced content.
 
-The NV-VP60 will simply refuse to display multiple consecutive B-type frames,
-causing jerky motion. MEncoder's libavcodec will not include them by default.
-MPlayer will print a warning message if it detects the presence of them in an
-AVI file, as apparently they are non-standard.
+The NV-VP60 does not like files encoded with the `-xvidencopts packed` option;
+it causes jerky motion on playback. MEncoder's libavcodec will not include them
+by default. MPlayer will print a warning message if it detects the presence of
+packed frames. 
+
+According to the Doom9 forum, the `packed` option in xvid is a hack when
+encoding under MS-Windows to get around a design limitation in the MS-VfW (Video
+for Windows) API which assumes "one frame in, one frame out" and does not
+understand the concept of B-frames (they cannot be decoded until a future
+P-frame is encountered, meaning two or more frames must be written/read before
+they can be all decoded.). It apparently involves stuffing empty dummy frames
+into the stream to get around this problem.
 
 The SD2010KY usually displays significant tearing or block-glitching artifacts
 if B-frames are used in interlaced footage. B-frames in progressive scan content
@@ -256,7 +267,7 @@ are fine though, and usually result in a slightly smaller file size.
 I've also noted that MPlayer 1.1 libavcodec MPEG-4 encoding also causes minor
 macroblock glitching on fast-moving interlaced scenes (e.g. time-lapse footage)
 - this was observed independently on computer in both MPlayer and FFmpeg. May be
-a MEncoder bug?
+a MEncoder libavcodec bug?
 
 Average video bitrate must not exceed 4Mbps. The peak video bitrate must not
 exceed 4.854Mbps for longer than one second.
@@ -267,10 +278,16 @@ For most cases, two-pass 1.5Mbps will provide near broadcast-SD quality; roughly
 The maximum keyframe interval is 250 frames; MEncoder selects this by
 default.
 
-There's a certain bitrate (or macroblock-per-second) threshold where
-files below this rate will play back smoothly like a VCR when being
-fast-forwarded at double-speed on the NV-VP60, instead of
-frame-dropping. I'm not sure what this threshold is.
+There's a certain bitrate (or macroblock-per-second) threshold where files below
+this rate will play back smoothly like a VCR when being fast-forwarded at
+double-speed on the NV-VP60, instead of frame-dropping. I'm not sure what this
+threshold is.
+
+The manual for the NV-VP60 states the NV-VP60 does *not* support Global Motion
+Compensation. 
+
+The manual for the SD2010KY states that the SD2010KY *does* support Global
+Motion Compensation.
 
 Subtitle requirements
 ---------------------
@@ -281,3 +298,11 @@ include subtitles in this exact format - will need to research.
 
 Surprisingly the SD2010KY supports SRT format subtitles as well - it will pop up
 a menu as you start playing allowing you to select a subtitle file.
+
+Chapter points?
+---------------
+
+I'm not sure if it's possible to mark chapter points into an AVI container, and
+have the hardware DVD players allow faster navigation via the chapter skip
+buttons? I think this might only be possible with the DMF container?
+
