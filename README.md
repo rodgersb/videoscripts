@@ -11,12 +11,11 @@ use by myself and should be reasonably well tested and robust, they come with
 purpose**. I will not be held responsible for any loss or damage that these
 scripts may cause. Please use them at your own risk.
 
-For each of these scripts, you will need
-[MPlayer](http://www.mplayerhq.hu/) installed on your system, and
-compiled with at least MPEG-4 Part 2 (Advanced Simple Profile) support
-through its libavcodec (lavc) library and MPEG-1 layer III audio
-encoding support via the LAME library. Some modes also require
-[FFmpeg](http://www.ffmpeg.org/).
+For each of these scripts, you will need [MPlayer](http://www.mplayerhq.hu/)
+installed on your system, and compiled with at least MPEG-4 Part 2 (Advanced
+Simple Profile) support through its libavcodec (lavc) library and MPEG-1 layer
+III audio encoding support via the LAME library. Some optional modes also
+require [FFmpeg](http://www.ffmpeg.org/).
 
 These scripts are written for the standard POSIX shell `/bin/sh`. I've tested
 them with GNU Bash 2.x and also Almquist shell.
@@ -30,6 +29,13 @@ These scripts were developed and tested under Linux, but should work
 without problems in other UNIX-like operating systems, and should
 probably work under [Cygwin](http://cygwin.com/) in Microsoft Windows,
 albeit as I do not use Windows I cannot and have not tested for this.
+
+All work done by Bryan Rodgers <rodgersb at it dot net dot au> unless otherwise
+indicated.
+
+Special thanks to my sister, Ellen, who allowed me to test some output DivX
+files on her DVD player, which helped me improve the reliability and
+compatibility of these scripts.
 
 
 encode-divxht
