@@ -35,7 +35,10 @@ indicated.
 
 Special thanks to my sister, Ellen, who allowed me to test some output DivX
 files on her DVD player, which helped me improve the reliability and
-compatibility of these scripts.
+compatibility of these scripts greatly.
+
+You can find updates for these scripts at the following URL:
+https://github.com/rodgersb/videoscripts
 
 
 encode-divxht
