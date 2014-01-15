@@ -9,7 +9,7 @@ The Cowon D2 normally comes with a MS-Windows program called JetAudio that can
 do this task, but this replacement script enables you to do the same under Linux
 or any other UNIX-like OS via MPlayer.
 
-Run this script with the `-h' option to see a list of command-line options. In
+Run this script with the `-h` option to see a list of command-line options. In
 many ways it works similar to the `encode-divxht` script. The simplest
 invocation is:
 
