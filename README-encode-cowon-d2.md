@@ -361,8 +361,8 @@ By default 2-pass encoding is enabled. This will give much better quality than
 single-pass encoding, but obviously takes twice as long.
 
 If you're cut for time and willing to trade off quality (or trade off more disk
-space to maintain a similar level of quality) then consider looking at the
-following options:
+space to maintain a similar level of quality) for shorter encoding time, then
+consider looking at the following options:
 
     -1, --single-pass
         Single-pass encode only (two-pass encoding is default). Halves
