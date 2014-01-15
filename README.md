@@ -165,7 +165,7 @@ The simplest invocation is:
 
     $ divxhtbitrate <storage-budget> videofiles...
 
-<storage-budget> is given either in megabytes or can also be a pre-set keyword
+*storage-budget* is given either in megabytes or can also be a pre-set keyword
 that specifies a common optical media type:
 
     bluray      A single-layer Blu-ray disc (25GB)
